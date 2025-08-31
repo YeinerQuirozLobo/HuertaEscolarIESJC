@@ -2,61 +2,64 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Zona de Intercambio - Inicio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Huerta Escolar San José del Citará</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f1f8f4;
+    }
+    header {
+      position: relative;
+      background-color: #2e7d32;
+      color: white;
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+    header img {
+      max-height: 180px;
+      margin-bottom: 1rem;
+      border-radius: 12px;
+    }
+    .btn-custom {
+      font-size: 1.2rem;
+      padding: 0.8rem 1.5rem;
+      border-radius: 10px;
+    }
+    footer {
+      background: #2e7d32;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      margin-top: 2rem;
+    }
+  </style>
 </head>
-<body class="bg-light">
-  <div class="container mt-5">
-    <h1 class="text-center text-success">🌱 Zona de Intercambio</h1>
-    <p class="text-center">Promoviendo la economía circular en nuestra comunidad escolar</p>
+<body>
 
-    <div class="card p-4 shadow-sm">
-      <h4 class="text-center">Iniciar sesión / Registrarse</h4>
-      <div class="mb-3">
-        <input type="email" id="email" class="form-control" placeholder="Correo">
-      </div>
-      <div class="mb-3">
-        <input type="password" id="password" class="form-control" placeholder="Contraseña">
-      </div>
-      <div class="d-flex justify-content-around">
-        <button id="loginBtn" class="btn btn-success">Iniciar Sesión</button>
-        <button id="registerBtn" class="btn btn-outline-success">Registrarse</button>
-      </div>
+  <header>
+    <!-- ⚠️ Cambia esta imagen por la de tu institución -->
+    <img src="iesjc.jepg" alt="Institución" />
+    <h1><i class="fa-solid fa-recycle"></i> Proyecto de huerta escolar y Economía Circular</h1>
+    <p>Promoviendo el intercambio responsable en Ciencias Naturales 🌱</p>
+  </header>
+
+  <main class="container text-center my-5">
+    <h2 class="mb-4">Bienvenidos a la Zona de Intercambio</h2>
+    <p class="mb-5">Aquí podrás publicar tus productos, ver lo que ofrecen tus compañeros y participar en el cuidado del planeta.</p>
+    
+    <div class="d-flex justify-content-center gap-4">
+      <a href="publicar.html" class="btn btn-success btn-custom">
+        <i class="fa-solid fa-box-open"></i> Ir a la Zona de Intercambio
+      </a>
     </div>
-  </div>
+  </main>
 
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <footer>
+    <small>Proyecto escolar - Economía Circular © 2025</small>
+  </footer>
 
-  <script>
-    // 🔹 Reemplaza con tu configuración real de Firebase
-    const firebaseConfig = {
-      apiKey: "TU_API_KEY",
-      authDomain: "tu-proyecto.firebaseapp.com",
-      projectId: "tu-proyecto",
-      storageBucket: "tu-proyecto.appspot.com",
-      messagingSenderId: "XXX",
-      appId: "XXX"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-
-    document.getElementById('loginBtn').onclick = () => {
-      auth.signInWithEmailAndPassword(
-        document.getElementById('email').value,
-        document.getElementById('password').value
-      ).then(() => window.location.href = 'publicar.html')
-      .catch(err => alert('❌ ' + err.message));
-    };
-
-    document.getElementById('registerBtn').onclick = () => {
-      auth.createUserWithEmailAndPassword(
-        document.getElementById('email').value,
-        document.getElementById('password').value
-      ).then(() => window.location.href = 'publicar.html')
-      .catch(err => alert('❌ ' + err.message));
-    };
-  </script>
 </body>
 </html>
