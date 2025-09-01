@@ -1,0 +1,206 @@
+<script>
+  const CLOUD_NAME = "b060bde9-7e99-47e9-a88f-f1956a197723"; // 
+  const UPLOAD_PRESET = "haz6ctpg"; // 
+
+  async function uploadImage(file) {
+    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", UPLOAD_PRESET);
+
+    const res = await fetch(url, {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+    return data.secure_url; // URL pública
+  }
+</script>
+  // -------------------- Referencias --------------------
+  const db = firebase.firestore();
+
+  const displayNameEl = document.getElementById('displayName');
+  const productNameEl = document.getElementById('productName');
+  const productQtyEl = document.getElementById('productQty');
+  const desiredEl = document.getElementById('desired');
+  const desiredQtyEl = document.getElementById('desiredQty');
+  const productImageEl = document.getElementById('productImage');
+  const publishBtn = document.getElementById('publishBtn');
+  const productsList = document.getElementById('productsList');
+
+  // -------------------- Publicar producto --------------------
+  publishBtn.onclick = async () => {
+    const ownerName = displayNameEl.value.trim();
+    const name = productNameEl.value.trim();
+    const qty = productQtyEl.value.trim();
+    const desired = desiredEl.value.trim();
+    const desiredQty = desiredQtyEl.value.trim();
+    const file = productImageEl.files[0];
+
+    if (!ownerName || !name || !qty || !desired || !desiredQty || !file) {
+      alert("⚠️ Completa todos los campos y selecciona una imagen.");
+      return;
+    }
+
+    try {
+      publishBtn.disabled = true;
+      publishBtn.innerText = "Publicando...";
+
+      // 🔹 Subir imagen a Cloudinary
+      const imageUrl = await uploadImage(file);
+
+      // 🔹 Guardar en Firestore
+      await db.collection("products").add({
+        ownerName,
+        name,
+        qty,
+        desired,
+        desiredQty,
+        imageUrl,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Limpiar formulario
+      productNameEl.value = "";
+      productQtyEl.value = "";
+      desiredEl.value = "";
+      desiredQtyEl.value = "";
+      productImageEl.value = "";
+      alert("✅ Producto publicado con éxito");
+
+    } catch (error) {
+      console.error("Error al publicar:", error);
+      alert("❌ Error al publicar: " + error.message);
+    } finally {
+      publishBtn.disabled = false;
+      publishBtn.innerText = "Publicar";
+    }
+  };
+
+  // -------------------- Mostrar productos en tiempo real --------------------
+  function loadProducts() {
+    db.collection("products").orderBy("createdAt", "desc").onSnapshot(snapshot => {
+      productsList.innerHTML = "";
+
+      if (snapshot.empty) {
+        productsList.innerHTML = "<p class='text-muted'>No hay productos aún.</p>";
+        return;
+      }
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const productEl = document.createElement("div");
+        productEl.className = "product-card";
+
+        productEl.innerHTML = `
+          <img src="${data.imageUrl}" alt="${data.name}">
+          <div class="product-info flex-grow-1">
+            <h5>${data.name} <small>(${data.qty})</small></h5>
+            <p><strong>${data.ownerName}</strong></p>
+            <p>Desea: ${data.desired} (${data.desiredQty})</p>
+            <button class="btn btn-sm btn-outline-primary contactBtn">Contactar</button>
+            <button class="btn btn-sm btn-outline-danger deleteBtn">Eliminar</button>
+          </div>
+        `;
+
+        // --- Botón Contactar ---
+        productEl.querySelector(".contactBtn").onclick = () => {
+          alert(`📩 Para contactar con ${data.ownerName}, debes hablar en persona o dentro de la institución.`);
+        };
+
+        // --- Botón Eliminar ---
+        productEl.querySelector(".deleteBtn").onclick = async () => {
+          const confirmDelete = confirm(`¿Seguro que deseas eliminar el producto "${data.name}"?`);
+          if (!confirmDelete) return;
+
+          try {
+            await db.collection("products").doc(doc.id).delete();
+            alert("✅ Producto eliminado con éxito");
+          } catch (err) {
+            console.error("Error al eliminar:", err);
+            alert("❌ Error al eliminar: " + err.message);
+          }
+        };
+
+        productsList.appendChild(productEl);
+      });
+    });
+  }
+
+  // Llamar función al cargar
+  loadProducts();
+</script>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zona de Intercambio - Economía Circular</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    body { background-color: #f1f8f4; font-family: 'Segoe UI', sans-serif; }
+    header { background: linear-gradient(90deg, #4caf50, #2e7d32); color: white; padding: 1rem 0; text-align: center; }
+    .form-card { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+    .product-item { display: flex; gap: 1rem; background: white; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .product-item img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 2px solid #c8e6c9; }
+    footer { background: #2e7d32; color: white; padding: 1rem; text-align: center; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><i class="fa-solid fa-recycle"></i> Zona de Intercambio</h1>
+    <p class="mb-0">Promoviendo la economía circular en nuestra comunidad escolar</p>
+  </header>
+
+  <main class="container my-4">
+
+    <!-- Formulario -->
+    <section class="form-card">
+      <h4 class="mb-3 text-success"><i class="fa-solid fa-seedling"></i> Publicar un producto</h4>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <input type="text" id="displayName" class="form-control" placeholder="Tu nombre">
+        </div>
+        <div class="col-md-6">
+          <input type="text" id="productName" class="form-control" placeholder="Nombre del producto">
+        </div>
+        <div class="col-md-3">
+          <input type="number" id="productQty" class="form-control" placeholder="Cantidad">
+        </div>
+        <div class="col-md-5">
+          <input type="text" id="desired" class="form-control" placeholder="Producto que deseas recibir">
+        </div>
+        <div class="col-md-4">
+          <input type="number" id="desiredQty" class="form-control" placeholder="Cantidad deseada">
+        </div>
+        <div class="col-md-12">
+          <input type="file" id="productImage" class="form-control" accept="image/*">
+        </div>
+      </div>
+      <button id="publishBtn" class="btn btn-success mt-3"><i class="fa-solid fa-upload"></i> Publicar</button>
+    </section>
+
+    <!-- Lista de productos -->
+    <section>
+      <h4 class="mb-3 text-success"><i class="fa-solid fa-box-open"></i> Productos disponibles</h4>
+      <div id="productsList"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <small>Proyecto de Economía Circular - Ciencias Naturales &copy; 2025</small>
+  </footer>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="publicar.js"></script>
+</body>
+</html>
