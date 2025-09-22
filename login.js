@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Bienvenido 🎉");
       console.log("Usuario logeado:", data.user);
 
-      // Redirigir a página principal (ej: dashboard.html)
+      // Redirigir a dashboard
       window.location.href = "dashboard.html";
     }
   });
@@ -52,7 +52,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (insertError) {
       alert("Error al guardar datos del estudiante: " + insertError.message);
     } else {
-      alert("Cuenta creada con éxito 🎉, ahora puedes iniciar sesión.");
+      alert("Cuenta creada con éxito 🎉");
+      // 🚀 Redirigir automáticamente después de registrarse
+      window.location.href = "dashboard.html";
     }
   });
 });

@@ -1,0 +1,59 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBzNbVVvvr1nA5jKmqU1tsrl0iVQ5wVwMA",
+  authDomain: "huerta-escolar-2-0-iesjc.firebaseapp.com",
+  projectId: "huerta-escolar-2-0-iesjc",
+  storageBucket: "huerta-escolar-2-0-iesjc.firebasestorage.app",
+  messagingSenderId: "155306392601",
+  appId: "1:155306392601:web:ead7ba1a5057de1a99be88"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+
+
+
+<a-entity mindar-image-target="src: ./targets/1H.mind; targetIndex: 0">
+      <a-plane src="#1H" position="0 0 0" height="2" width="2"></a-plane>
+    </a-entity>
+
+    <a-entity mindar-image-target="src: ./targets/2He.mind; targetIndex: 0">
+      <a-plane src="#2He" position="0 0 0" height="2" width="2"></a-plane>
+    </a-entity>
+  </a-scene>
+</body>
+</html>
+
+
+
+
+
+
+
+<!-- Escena para Helio -->
+<a-scene mindar-image="imageTargetSrc: ./targets/2He.mind;" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+  <a-assets>
+    <img id="helio" src="./images/2He.png" />
+  </a-assets>
+  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+  <a-entity mindar-image-target="targetIndex: 0">
+    <a-plane src="#helio" position="0 0 0" height="2" width="2"></a-plane>
+  </a-entity>
+</a-scene>
+
+<!-- Escena para Hidrógeno -->
+<a-scene mindar-image="imageTargetSrc: ./targets/1H.mind;" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+  <a-assets>
+    <img id="hidrogeno" src="./images/1H.png" />
+  </a-assets>
+  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+  <a-entity mindar-image-target="targetIndex: 0">
+    <a-plane src="#hidrogeno" position="0 0 0" height="2" width="2"></a-plane>
+  </a-entity>
+</a-scene>
