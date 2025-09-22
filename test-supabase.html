@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prueba Supabase</title>
+</head>
+<body>
+  <h1>Prueba de conexión con Supabase</h1>
+  <button id="testBtn">Probar conexión</button>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js";
+
+    // ⚠️ Reemplaza con tus credenciales
+    const supabaseUrl = 'https://mhjfofucyvlesahsekzv.supabase.co'
+    const supabaseKey = process.env.SUPABASE_KEY;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const btn = document.getElementById("testBtn");
+    const output = document.getElementById("output");
+
+    btn.addEventListener("click", async () => {
+      try {
+        // Intentamos leer usuarios autenticados (solo como prueba)
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          output.textContent = "❌ Error: " + error.message;
+        } else {
+          output.textContent = "✅ Conexión exitosa.\n\n" + JSON.stringify(data, null, 2);
+        }
+      } catch (err) {
+        output.textContent = "⚠️ Error inesperado: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
