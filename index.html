@@ -112,20 +112,20 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
   <!-- Supabase JS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
 
-  <!-- Configuración de Supabase -->
+  <!-- Configuración de Supabase (se hace SOLO AQUÍ) -->
   <script>
     const SUPABASE_URL = "https://mhjfofucyvlesahsekzv.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1oamZvZnVjeXZsZXNhaHNla3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NzM2NjMsImV4cCI6MjA3NDE0OTY2M30.wDV6wH5pfqSzs6FSkArucqIWS2Q5_PvyczNLQ0_mJZk";
 
-    // 👇 importante: asignamos a window.supabase para que sea accesible en otros scripts
+    // 👉 Lo guardamos en window para que otros scripts lo usen
     window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     console.log("✅ Cliente Supabase inicializado");
   </script>
 
-  <!-- Script de login (usa supabase ya inicializado) -->
+  <!-- Script de login (aquí ya se puede usar supabase) -->
   <script src="js/login.js"></script>
 </body>
 </html>
