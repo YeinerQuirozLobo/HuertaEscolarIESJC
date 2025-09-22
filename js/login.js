@@ -1,60 +1,79 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const loginForm = document.getElementById("loginForm");
-  const registerForm = document.getElementById("registerForm");
+// Aseguramos que supabase esté cargado
+if (!window.supabase) {
+  console.error("❌ Supabase no está definido. Revisa que el script de configuración esté antes de este archivo.");
+}
 
-  // --- LOGIN ---
-  loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+// Referencia al cliente global
+const supabase = window.supabase;
 
-    const email = document.getElementById("loginEmail").value;
-    const password = document.getElementById("loginPassword").value;
-
+// ------------------------------
+// LOGIN
+// ------------------------------
+async function loginUser(email, password) {
+  try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      password,
+      password
     });
 
     if (error) {
-      alert("Error al iniciar sesión: " + error.message);
-    } else {
-      alert("Bienvenido 🎉");
-      console.log("Usuario logeado:", data.user);
-
-      // Redirigir a dashboard
-      window.location.href = "dashboard.html";
+      console.error("❌ Error al iniciar sesión:", error.message);
+      alert("Error: " + error.message);
+      return null;
     }
-  });
 
-  // --- REGISTRO ---
-  registerForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+    console.log("✅ Usuario logueado:", data);
+    alert("Bienvenido " + email);
+    return data;
+  } catch (err) {
+    console.error("⚠️ Excepción en login:", err);
+  }
+}
 
-    const name = document.getElementById("registerName").value;
-    const email = document.getElementById("registerEmail").value;
-    const password = document.getElementById("registerPassword").value;
-
-    // 1. Crear usuario en auth
+// ------------------------------
+// SIGN UP
+// ------------------------------
+async function registerUser(email, password) {
+  try {
     const { data, error } = await supabase.auth.signUp({
       email,
-      password,
+      password
     });
 
     if (error) {
-      alert("Error al registrarse: " + error.message);
-      return;
+      console.error("❌ Error al registrar:", error.message);
+      alert("Error: " + error.message);
+      return null;
     }
 
-    // 2. Guardar datos extra en tabla students
-    const { error: insertError } = await supabase
-      .from("students")
-      .insert([{ id: data.user.id, name, email }]);
+    console.log("✅ Usuario registrado:", data);
+    alert("Usuario registrado: " + email);
+    return data;
+  } catch (err) {
+    console.error("⚠️ Excepción en registro:", err);
+  }
+}
 
-    if (insertError) {
-      alert("Error al guardar datos del estudiante: " + insertError.message);
-    } else {
-      alert("Cuenta creada con éxito 🎉");
-      // 🚀 Redirigir automáticamente después de registrarse
-      window.location.href = "dashboard.html";
-    }
-  });
+// ------------------------------
+// EVENTOS (ejemplo con botones en HTML)
+// ------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  const loginBtn = document.getElementById("btnLogin");
+  const registerBtn = document.getElementById("btnRegister");
+
+  if (loginBtn) {
+    loginBtn.addEventListener("click", async () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      await loginUser(email, password);
+    });
+  }
+
+  if (registerBtn) {
+    registerBtn.addEventListener("click", async () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      await registerUser(email, password);
+    });
+  }
 });
