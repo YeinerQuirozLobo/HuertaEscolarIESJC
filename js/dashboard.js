@@ -1,99 +1,134 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const form = document.getElementById("formPublicacion");
-  const feed = document.getElementById("feed");
-  const logoutBtn = document.getElementById("logoutBtn");
+import { supabase } from "./supabaseClient.js";
 
-  // ✅ Publicar producto
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+// Referencias a elementos del DOM
+const formPublicacion = document.getElementById("formPublicacion");
+const feedContainer = document.getElementById("feed");
+const logoutBtn = document.getElementById("logoutBtn");
 
-      const producto = document.getElementById("producto").value;
-      const cantidad = document.getElementById("cantidad").value;
-      const unidad = document.getElementById("unidad").value;
-      const productoDeseado = document.getElementById("productoDeseado").value;
-      const cantidadDeseada = document.getElementById("cantidadDeseada").value;
-      const unidadDeseada = document.getElementById("unidadDeseada").value;
-      const imagenFile = document.getElementById("imagen").files[0];
+// 1. Verificar la sesión del usuario al cargar la página
+document.addEventListener("DOMContentLoaded", async () => {
+    const { data: { user } } = await supabase.auth.getSession();
 
-      try {
-        // Subir imagen al bucket "productos"
-        const fileName = `${Date.now()}_${imagenFile.name}`;
-        const { data: imgData, error: imgError } = await supabase
-          .storage
-          .from("productos")
-          .upload(fileName, imagenFile);
+    // Si no hay sesión, redirigir al login
+    if (!user) {
+        window.location.href = "index.html";
+        return;
+    }
 
-        if (imgError) throw imgError;
+    // Si hay sesión, cargar las publicaciones
+    await cargarPublicaciones();
+});
 
-        const { data: urlData } = supabase
-          .storage
-          .from("productos")
-          .getPublicUrl(fileName);
-
-        // Insertar en la tabla publicaciones
-        const { error } = await supabase.from("publicaciones").insert([{
-          producto,
-          cantidad,
-          unidad,
-          imagen_url: urlData.publicUrl,
-          producto_deseado: productoDeseado,
-          cantidad_deseada: cantidadDeseada,
-          unidad_deseada: unidadDeseada
-        }]);
-
-        if (error) throw error;
-
-        alert("✅ Publicación realizada con éxito");
-        form.reset();
-        cargarPublicaciones();
-
-      } catch (err) {
-        console.error("❌ Error al publicar:", err.message);
-        alert("❌ No se pudo publicar el producto.");
-      }
+// 2. Manejar el cierre de sesión
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+        await supabase.auth.signOut();
+        window.location.href = "index.html";
     });
-  }
+}
 
-  // ✅ Cargar publicaciones
-  async function cargarPublicaciones() {
-    feed.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
+// 3. Manejar el formulario de publicación
+if (formPublicacion) {
+    formPublicacion.addEventListener("submit", async (e) => {
+        e.preventDefault();
 
+        const { data: { user } } = await supabase.auth.getSession();
+        if (!user) {
+            alert("Debes iniciar sesión para publicar un producto.");
+            return;
+        }
+
+        const producto = document.getElementById("producto").value;
+        const cantidad = document.getElementById("cantidad").value;
+        const unidad = document.getElementById("unidad").value;
+        const productoDeseado = document.getElementById("productoDeseado").value;
+        const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+        const unidadDeseada = document.getElementById("unidadDeseada").value;
+        const imagenFile = document.getElementById("imagen").files[0];
+
+        try {
+            // Subir imagen al bucket "productos" en Supabase Storage
+            const fileName = `${Date.now()}-${user.id}-${imagenFile.name}`;
+            const { data: imgData, error: imgError } = await supabase.storage
+                .from("productos")
+                .upload(fileName, imagenFile);
+            
+            if (imgError) throw imgError;
+
+            // Obtener la URL pública de la imagen
+            const { data: urlData } = supabase.storage
+                .from("productos")
+                .getPublicUrl(imgData.path);
+
+            // Insertar la publicación en la tabla "publicaciones"
+            const { error } = await supabase.from("publicaciones").insert([{
+                user_id: user.id, // Esto es CRUCIAL para RLS
+                producto,
+                cantidad,
+                unidad,
+                imagen_url: urlData.publicUrl,
+                producto_deseado: productoDeseado,
+                cantidad_deseada: cantidadDeseada,
+                unidad_deseada: unidadDeseada
+            }]);
+
+            if (error) throw error;
+
+            alert("✅ Publicación realizada con éxito");
+            formPublicacion.reset();
+            await cargarPublicaciones(); // Recargar el feed
+        } catch (err) {
+            console.error("❌ Error al publicar:", err.message);
+            alert("❌ No se pudo publicar el producto.");
+        }
+    });
+}
+
+// 4. Función para cargar y mostrar las publicaciones
+async function cargarPublicaciones() {
+    feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
+
+    // Obtener publicaciones y la información del perfil del usuario
     const { data, error } = await supabase
-      .from("publicaciones")
-      .select("*")
-      .order("id", { ascending: false });
+        .from("publicaciones")
+        .select(`
+            *,
+            profiles(full_name) // CRUCIAL para mostrar el nombre del autor
+        `)
+        .order("id", { ascending: false });
 
     if (error) {
-      console.error("❌ Error al cargar publicaciones:", error.message);
-      feed.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
-      return;
+        console.error("❌ Error al cargar publicaciones:", error.message);
+        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
+        return;
     }
 
     if (!data || data.length === 0) {
-      feed.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
-      return;
+        feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
+        return;
     }
 
-    feed.innerHTML = data.map(pub => `
-      <div class="card mb-3 shadow">
-        <div class="card-body">
-          <h5 class="card-title text-primary">${pub.producto}</h5>
-          <p><strong>Cantidad:</strong> ${pub.cantidad} ${pub.unidad}</p>
-          <img src="${pub.imagen_url}" class="img-fluid mb-3" alt="Producto">
-          <p><strong>Quiere recibir:</strong> ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${pub.producto_deseado}</p>
-        </div>
-      </div>
-    `).join("");
-  }
-
-  cargarPublicaciones();
-
-  // ✅ Logout
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-      await supabase.auth.signOut();
-      window.location.href = "index.html";
-    });
-  }
-});
+    // Renderizar las publicaciones
+    const htmlCards = data.map(pub => {
+        const authorName = pub.profiles ? pub.profiles.full_name : 'Usuario Desconocido';
+        return `
+            <div class="card mb-3 shadow">
+                <div class="row g-0">
+                    <div class="col-md-4">
+                        <img src="${pub.imagen_url}" class="img-fluid rounded-start h-100 object-fit-cover" alt="Imagen de ${pub.producto}">
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card-body">
+                            <h5 class="card-title text-primary">${pub.producto}</h5>
+                            <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
+                            <p class="card-text">Deseo a cambio: **${pub.cantidad_deseada} ${pub.unidad_deseada}** de **${pub.producto_deseado}**</p>
+                            <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join("");
+    
+    feedContainer.innerHTML = htmlCards;
+}
