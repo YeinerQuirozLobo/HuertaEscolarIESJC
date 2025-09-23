@@ -1,33 +1,30 @@
 import { supabase } from "./supabaseClient.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-  // --- LOGIN ---
-  const loginForm = document.getElementById("loginForm");
-  if (loginForm) {
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
+ 
+ // --- LOGIN ---
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-      const email = document.getElementById("loginEmail").value;
-      const password = document.getElementById("loginPassword").value;
+  const email = document.getElementById("loginEmail").value;
+  const password = document.getElementById("loginPassword").value;
 
-      if (!email || !password) {
-        alert("⚠️ Debes ingresar correo y contraseña");
-        return;
-      }
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  if (error) {
+    alert("❌ Error al iniciar sesión: " + error.message);
+    console.error(error);
+  } else {
+    alert("✅ Inicio de sesión exitoso");
+    console.log("Sesión:", data);
 
-      if (error) {
-        alert("❌ Error al iniciar sesión: " + error.message);
-      } else {
-        alert("✅ Bienvenido " + email);
-        console.log("Usuario logueado:", data);
-      }
-    });
+    // Redirigir a otra página después de login
+    window.location.href = "dashboard.html"; 
   }
+});
 
   // --- REGISTRO ---
   const registerForm = document.getElementById("registerForm");
