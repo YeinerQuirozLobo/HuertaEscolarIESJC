@@ -1,7 +1,7 @@
-// login.js
+// js/login.js
 import { supabase } from "./supabaseClient.js";
 
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
+document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const email = document.getElementById("email").value;
@@ -9,13 +9,13 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
-    password
+    password,
   });
 
   if (error) {
     alert("❌ Error: " + error.message);
   } else {
-    alert("✅ Login exitoso, redirigiendo...");
+    alert("✅ Bienvenido " + email);
     window.location.href = "dashboard.html";
   }
 });
