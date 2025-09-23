@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tabla Periódica AR</title>
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+<script src="https://rawcdn.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    .watermark {
+      position: fixed;
+      bottom: 5px;
+      left: 5px;
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.6);
+      background: rgba(255, 255, 255, 0.5);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255,255,255,0.9);
+      padding: 15px 20px;
+      border-radius: 10px;
+      font-size: 16px;
+      color: black;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">🔍 Cargando elementos...</div>
+  <div class="watermark">Yeiner Quiroz Lobo</div>
+
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
+    
+    <a-entity id="camera" camera></a-entity>
+  </a-scene>
+
+  <script>
+    async function loadElements() {
+      try {
+        const res = await fetch("data.json");
+        const elements = await res.json();
+
+        const scene = document.querySelector("a-scene");
+
+        // recorrer cada elemento y crear su marcador
+        for (const [symbol, data] of Object.entries(elements)) {
+          const marker = document.createElement("a-nft");
+          marker.setAttribute("type", "nft");
+          marker.setAttribute("url", data.marker);
+          marker.setAttribute("smooth", "true");
+          marker.setAttribute("smoothCount", "10");
+          marker.setAttribute("smoothTolerance", "0.01");
+          marker.setAttribute("smoothThreshold", "5");
+
+          // plano con la imagen del elemento
+          const plane = document.createElement("a-plane");
+          plane.setAttribute("src", data.image);
+          plane.setAttribute("position", "0 0 0");
+          plane.setAttribute("rotation", "-90 0 0");
+          plane.setAttribute("width", "1");
+          plane.setAttribute("height", "1");
+
+          marker.appendChild(plane);
+          scene.appendChild(marker);
+        }
+
+        document.getElementById("loading").style.display = "none";
+        console.log("✅ Elementos cargados:", Object.keys(elements).length);
+      } catch (err) {
+        console.error("❌ Error cargando data.json:", err);
+        document.getElementById("loading").innerText = "Error cargando data.json";
+      }
+    }
+
+    loadElements();
+  </script>
+</body>
+</html>
