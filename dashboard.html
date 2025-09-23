@@ -1,34 +1,39 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Huerta Escolar - Panel</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      height: 100vh;
+      background: linear-gradient(135deg, #000000, #FFD700, #1E90FF);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+    }
+    .card {
+      width: 420px;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+      overflow: hidden;
+      text-align: center;
+    }
+    .card-header {
+      background-color: #000000;
+      color: #FFD700;
+      padding: 1rem;
+    }
+    .card-header img {
+      width: 70px;
+      margin-bottom: 10px;
+    }
+    .btn-custom {
+      background-color: #1E90FF;
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBzNbVVvvr1nA5jKmqU1tsrl0iVQ5wVwMA",
-  authDomain: "huerta-escolar-2-0-iesjc.firebaseapp.com",
-  projectId: "huerta-escolar-2-0-iesjc",
-  storageBucket: "huerta-escolar-2-0-iesjc.firebasestorage.app",
-  messagingSenderId: "155306392601",
-  appId: "1:155306392601:web:ead7ba1a5057de1a99be88"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-
-
-
-<a-entity mindar-image-target="src: ./targets/1H.mind; targetIndex: 0">
-      <a-plane src="#1H" position="0 0 0" height="2" width="2"></a-plane>
-    </a-entity>
-
-    <a-entity mindar-image-target="src: ./targets/2He.mind; targetIndex: 0">
-      <a-plane src="#2He" position="0 0 0" height="2" width="2"></a-plane>
-    </a-entity>
-  </a-scene>
-</body>
-</html>
 
 
 
