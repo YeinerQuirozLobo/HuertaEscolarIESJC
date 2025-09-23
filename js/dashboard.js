@@ -20,9 +20,9 @@ document.getElementById("productForm").addEventListener("submit", async (e) => {
   const file = fileInput.files[0];
   const fileName = `${Date.now()}-${file.name}`;
 
-  // 🔹 Subir archivo al bucket "productos"
+  // 🔹 Subir archivo al bucket "Productos"
   const { error: uploadError } = await supabase.storage
-    .from("productos")
+    .from("Productos")
     .upload(fileName, file, {
       cacheControl: "3600",
       upsert: false
@@ -36,7 +36,7 @@ document.getElementById("productForm").addEventListener("submit", async (e) => {
 
   // 🔹 Obtener URL pública
   const { data: urlData } = supabase.storage
-    .from("productos")
+    .from("Productos")
     .getPublicUrl(fileName);
 
   const imageUrl = urlData.publicUrl;
