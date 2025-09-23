@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient.js";
+import { supabase } from "./js/supabaseClient.js";
 
 // Referencias a elementos del DOM
 const formPublicacion = document.getElementById("formPublicacion");
