@@ -1,116 +1,109 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { supabase } from "./supabaseClient.js";
 
-// 🔑 Conexión a Supabase
-const SUPABASE_URL = "https://mhjfofucyvlesahsekzv.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1oamZvZnVjeXZsZXNhaHNla3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NzM2NjMsImV4cCI6MjA3NDE0OTY2M30.wDV6wH5pfqSzs6FSkArucqIWS2Q5_PvyczNLQ0_mJZk";
+// ----------- PUBLICAR PRODUCTO -----------
+document.getElementById("productForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const product = document.getElementById("productName").value;
+  const productQuantity = document.getElementById("productQuantity").value;
+  const productUnit = document.getElementById("productUnit").value;
+  const exchangeProduct = document.getElementById("exchangeProduct").value;
+  const exchangeQuantity = document.getElementById("exchangeQuantity").value;
+  const exchangeUnit = document.getElementById("exchangeUnit").value;
+  const fileInput = document.getElementById("productImage");
 
-// 📌 Referencias a elementos
-const publicacionForm = document.getElementById("publicacionForm");
-const feedContainer = document.getElementById("feedContainer");
-const logoutBtn = document.getElementById("logout");
-
-// 👉 Función para subir imagen a Supabase Storage
-async function subirImagen(file) {
-  const fileName = `${Date.now()}_${file.name}`;
-  const { data, error } = await supabase.storage
-    .from("productos")
-    .upload(fileName, file);
-
-  if (error) {
-    console.error("❌ Error al subir imagen:", error.message);
-    return null;
+  if (!fileInput.files.length) {
+    alert("Debes subir una imagen");
+    return;
   }
 
-  // Obtener URL pública
+  const file = fileInput.files[0];
+  const fileName = `${Date.now()}-${file.name}`;
+
+  // 🔹 Subir archivo al bucket "productos"
+  const { error: uploadError } = await supabase.storage
+    .from("productos")
+    .upload(fileName, file, {
+      cacheControl: "3600",
+      upsert: false
+    });
+
+  if (uploadError) {
+    console.error("Error al subir la imagen:", uploadError.message);
+    alert("❌ Error al subir la imagen");
+    return;
+  }
+
+  // 🔹 Obtener URL pública
   const { data: urlData } = supabase.storage
     .from("productos")
     .getPublicUrl(fileName);
 
-  return urlData.publicUrl;
-}
+  const imageUrl = urlData.publicUrl;
 
-// 👉 Manejo del formulario de publicación
-publicacionForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-
-  const producto = document.getElementById("producto").value;
-  const cantidad = document.getElementById("cantidad").value;
-  const unidad = document.getElementById("unidad").value;
-  const imagen = document.getElementById("imagen").files[0];
-  const deseoProducto = document.getElementById("deseoProducto").value;
-  const deseoCantidad = document.getElementById("deseoCantidad").value;
-  const deseoUnidad = document.getElementById("deseoUnidad").value;
-
-  if (!imagen) {
-    alert("Por favor sube una imagen del producto");
-    return;
-  }
-
-  // Subir imagen
-  const imagenUrl = await subirImagen(imagen);
-
-  if (!imagenUrl) {
-    alert("Error al subir la imagen");
-    return;
-  }
-
-  // Guardar en Supabase
-  const { error } = await supabase.from("publicaciones").insert([
+  // 🔹 Guardar publicación en la tabla "publicaciones"
+  const { error: insertError } = await supabase.from("publicaciones").insert([
     {
-      producto,
-      cantidad,
-      unidad,
-      imagen: imagenUrl,
-      deseo_producto: deseoProducto,
-      deseo_cantidad: deseoCantidad,
-      deseo_unidad: deseoUnidad,
+      producto: product,
+      cantidad: productQuantity + " " + productUnit,
+      imagen_url: imageUrl,
+      desea_producto: exchangeProduct,
+      desea_cantidad: exchangeQuantity + " " + exchangeUnit,
     },
   ]);
 
-  if (error) {
-    console.error("❌ Error al guardar publicación:", error.message);
-    alert("No se pudo publicar");
+  if (insertError) {
+    console.error("Error al guardar en la base de datos:", insertError.message);
+    alert("❌ Error al guardar la publicación");
   } else {
     alert("✅ Publicación creada con éxito");
-    publicacionForm.reset();
-    cargarPublicaciones();
+    document.getElementById("productForm").reset();
+    loadFeed(); // recargar publicaciones
   }
 });
 
-// 👉 Función para cargar publicaciones en el feed
-async function cargarPublicaciones() {
+// ----------- MOSTRAR FEED DE PUBLICACIONES -----------
+async function loadFeed() {
+  const feed = document.getElementById("feed");
+  feed.innerHTML = "<p>Cargando publicaciones...</p>";
+
   const { data, error } = await supabase
     .from("publicaciones")
     .select("*")
-    .order("id", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("❌ Error al cargar publicaciones:", error.message);
+    console.error("Error al cargar publicaciones:", error.message);
+    feed.innerHTML = "<p>Error al cargar publicaciones</p>";
     return;
   }
 
-  feedContainer.innerHTML = "";
+  if (!data.length) {
+    feed.innerHTML = "<p>No hay publicaciones todavía</p>";
+    return;
+  }
 
-  data.forEach((pub) => {
-    const div = document.createElement("div");
-    div.classList.add("publicacion");
-    div.innerHTML = `
-      <p><strong>Producto:</strong> ${pub.producto}</p>
-      <p><strong>Cantidad:</strong> ${pub.cantidad} ${pub.unidad}</p>
-      <img src="${pub.imagen}" alt="${pub.producto}">
-      <p><strong>Quiere recibir:</strong> ${pub.deseo_cantidad} ${pub.deseo_unidad} de ${pub.deseo_producto}</p>
-    `;
-    feedContainer.appendChild(div);
-  });
+  feed.innerHTML = data
+    .map(
+      (pub) => `
+      <div class="card mb-3 shadow-sm">
+        <img src="${pub.imagen_url}" class="card-img-top" alt="${pub.producto}">
+        <div class="card-body">
+          <h5 class="card-title">${pub.producto}</h5>
+          <p><strong>Cantidad:</strong> ${pub.cantidad}</p>
+          <p><strong>Desea recibir:</strong> ${pub.desea_producto} (${pub.desea_cantidad})</p>
+        </div>
+      </div>
+    `
+    )
+    .join("");
 }
 
-// 👉 Cerrar sesión
-logoutBtn.addEventListener("click", async () => {
+// ----------- CERRAR SESIÓN -----------
+document.getElementById("logoutBtn").addEventListener("click", async () => {
   await supabase.auth.signOut();
   window.location.href = "index.html";
 });
 
-// 🚀 Cargar publicaciones al iniciar
-cargarPublicaciones();
+// ----------- CARGAR AL INICIAR -----------
+loadFeed();
