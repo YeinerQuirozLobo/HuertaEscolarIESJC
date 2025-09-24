@@ -43,21 +43,20 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
         return;
       }
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: name },
-          redirectTo: 'https://yeinerquirozlobo.github.io/HuertaEscolarIESJC/dashboard.html'
-        },
-      });
-
-      if (error) {
-        alert("❌ Error al registrarse: " + error.message);
-      } else {
-        alert("✅ Cuenta creada, revisa tu correo para confirmar");
-        console.log("Usuario registrado:", data);
-      }
-    });
-  }
+// ... dentro de la función de inicio de sesión
+const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+    options: {
+        // Asegúrate de que esta URL sea la de tu dashboard
+        redirectTo: 'http://127.0.0.1:5500/dashboard.html'
+    }
 });
+
+if (error) {
+    // ... manejo de errores
+} else {
+    alert("✅ Inicio de sesión exitoso");
+    console.log("Sesión:", data);
+    // Supabase maneja la redirección aquí, no necesitas window.location.href
+}
