@@ -1,62 +1,82 @@
 import { supabase } from "./supabaseClient.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-  
- // --- LOGIN ---
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+    
+    // --- Lógica para mostrar/ocultar formularios ---
+    const loginCard = document.getElementById("loginCard");
+    const registerCard = document.getElementById("registerCard");
+    const showRegisterLink = document.getElementById("showRegister");
+    const showLoginLink = document.getElementById("showLogin");
 
-  const email = document.getElementById("loginEmail").value;
-  const password = document.getElementById("loginPassword").value;
+    if (showRegisterLink && registerCard) {
+        showRegisterLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            loginCard.style.display = "none";
+            registerCard.style.display = "block";
+        });
+    }
 
-  // Usamos redirectTo para que Supabase maneje la redirección y la sesión
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-    options: {
-      redirectTo: 'https://yeinerquirozlobo.github.io/HuertaEscolarIESJC/dashboard.html'
-    }
-  });
+    if (showLoginLink && loginCard) {
+        showLoginLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            registerCard.style.display = "none";
+            loginCard.style.display = "block";
+        });
+    }
 
-  if (error) {
-    alert("❌ Error al iniciar sesión: " + error.message);
-    console.error(error);
-  } else {
-    alert("✅ Inicio de sesión exitoso");
-    console.log("Sesión:", data);
-    // La redirección ahora es manejada por Supabase
-  }
-});
+    // --- LOGIN ---
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
 
-  // --- REGISTRO ---
-  const registerForm = document.getElementById("registerForm");
-  if (registerForm) {
-    registerForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
+        const email = document.getElementById("loginEmail").value;
+        const password = document.getElementById("loginPassword").value;
 
-      const name = document.getElementById("registerName").value;
-      const email = document.getElementById("registerEmail").value;
-      const password = document.getElementById("registerPassword").value;
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
 
-      if (!name || !email || !password) {
-        alert("⚠️ Todos los campos son obligatorios");
-        return;
-      }
+        if (error) {
+            alert("❌ Error al iniciar sesión: " + error.message);
+            console.error(error);
+        } else {
+            alert("✅ Inicio de sesión exitoso");
+            console.log("Sesión:", data);
+            
+            // Redirigir a otra página después de login
+            window.location.href = "dashboard.html";
+        }
+    });
 
-// ... dentro de la función de inicio de sesión
-const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-    options: {
-        // Asegúrate de que esta URL sea la de tu dashboard
-        redirectTo: 'http://127.0.0.1:5500/dashboard.html'
+    // --- REGISTRO ---
+    const registerForm = document.getElementById("registerForm");
+    if (registerForm) {
+        registerForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const name = document.getElementById("registerName").value;
+            const email = document.getElementById("registerEmail").value;
+            const password = document.getElementById("registerPassword").value;
+
+            if (!name || !email || !password) {
+                alert("⚠️ Todos los campos son obligatorios");
+                return;
+            }
+
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: { full_name: name },
+                },
+            });
+
+            if (error) {
+                alert("❌ Error al registrarse: " + error.message);
+            } else {
+                alert("✅ Cuenta creada, revisa tu correo para confirmar");
+                console.log("Usuario registrado:", data);
+            }
+        });
     }
 });
-
-if (error) {
-    // ... manejo de errores
-} else {
-    alert("✅ Inicio de sesión exitoso");
-    console.log("Sesión:", data);
-    // Supabase maneja la redirección aquí, no necesitas window.location.href
-}
