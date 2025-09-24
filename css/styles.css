@@ -1,7 +1,139 @@
-body {
-  font-family: 'Segoe UI', sans-serif;
-  background-color: #f1f8f4;
+/* Colores de la institución */
+:root {
+    --color-negro: #212529;
+    --color-amarillo: #FFC107;
+    --color-azul: #0D6EFD;
 }
-header {
-  background: linear-gradient(90deg, #4caf50, #2e7d32);
+
+/* Estilos generales y tipografía */
+body {
+    background-color: #f8f9fa;
+    color: var(--color-negro);
+    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--color-negro) !important;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand {
+    color: var(--color-amarillo) !important;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: transform 0.3s ease-in-out;
+}
+
+.navbar-brand:hover {
+    transform: scale(1.05);
+}
+
+.school-logo {
+    height: 40px; /* Ajusta el tamaño del escudo */
+    transition: transform 0.3s ease-in-out;
+}
+
+.school-logo:hover {
+    transform: rotate(10deg);
+}
+
+.btn-outline-light {
+    color: var(--color-amarillo);
+    border-color: var(--color-amarillo);
+    transition: all 0.3s ease;
+}
+
+.btn-outline-light:hover {
+    background-color: var(--color-amarillo);
+    color: var(--color-negro);
+}
+
+/* Formularios de inicio de sesión y registro */
+.card {
+    border: none;
+    border-radius: 1rem;
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+    background-color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.btn-primary {
+    background-color: var(--color-azul);
+    border-color: var(--color-azul);
+    transition: background-color 0.3s ease;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0b5ed7;
+}
+
+.btn-success {
+    background-color: var(--color-amarillo);
+    border-color: var(--color-amarillo);
+    color: var(--color-negro);
+    transition: background-color 0.3s ease;
+}
+
+.btn-success:hover {
+    background-color: #e0a800;
+    border-color: #e0a800;
+    color: var(--color-negro);
+}
+
+/* Dashboard - Feed de publicaciones */
+.card-title.text-primary {
+    color: var(--color-azul) !important;
+    font-weight: bold;
+}
+
+.card-text.text-secondary {
+    color: var(--color-negro) !important;
+}
+
+.card-body h5 {
+    color: var(--color-azul);
+    font-weight: bold;
+}
+
+/* Estilos para las publicaciones */
+.feed .card {
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.feed .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.card-img-container {
+    overflow: hidden;
+    height: 250px;
+    border-top-left-radius: calc(1rem - 1px);
+    border-top-right-radius: calc(1rem - 1px);
+}
+
+.card-img-container img {
+    object-fit: cover;
+    height: 100%;
+    width: 100%;
+    transition: transform 0.5s ease-in-out;
+}
+
+.card-img-container img:hover {
+    transform: scale(1.1);
+}
+
+/* Espacio entre los elementos del feed */
+.col-md-8 #feed > div {
+    margin-bottom: 1.5rem;
 }
