@@ -1,60 +1,63 @@
 import { supabase } from "./supabaseClient.js";
 
 document.addEventListener("DOMContentLoaded", () => {
- 
- // --- LOGIN ---
+  
+ // --- LOGIN ---
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+  e.preventDefault();
 
-  const email = document.getElementById("loginEmail").value;
-  const password = document.getElementById("loginPassword").value;
+  const email = document.getElementById("loginEmail").value;
+  const password = document.getElementById("loginPassword").value;
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  // Usamos redirectTo para que Supabase maneje la redirección y la sesión
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+    options: {
+      redirectTo: 'https://yeinerquirozlobo.github.io/HuertaEscolarIESJC/dashboard.html'
+    }
+  });
 
-  if (error) {
-    alert("❌ Error al iniciar sesión: " + error.message);
-    console.error(error);
-  } else {
-    alert("✅ Inicio de sesión exitoso");
-    console.log("Sesión:", data);
-
-    // Redirigir a otra página después de login
-    window.location.href = "dashboard.html"; 
-  }
+  if (error) {
+    alert("❌ Error al iniciar sesión: " + error.message);
+    console.error(error);
+  } else {
+    alert("✅ Inicio de sesión exitoso");
+    console.log("Sesión:", data);
+    // La redirección ahora es manejada por Supabase
+  }
 });
 
-  // --- REGISTRO ---
-  const registerForm = document.getElementById("registerForm");
-  if (registerForm) {
-    registerForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
+  // --- REGISTRO ---
+  const registerForm = document.getElementById("registerForm");
+  if (registerForm) {
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-      const name = document.getElementById("registerName").value;
-      const email = document.getElementById("registerEmail").value;
-      const password = document.getElementById("registerPassword").value;
+      const name = document.getElementById("registerName").value;
+      const email = document.getElementById("registerEmail").value;
+      const password = document.getElementById("registerPassword").value;
 
-      if (!name || !email || !password) {
-        alert("⚠️ Todos los campos son obligatorios");
-        return;
-      }
+      if (!name || !email || !password) {
+        alert("⚠️ Todos los campos son obligatorios");
+        return;
+      }
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: name },
-        },
-      });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: name },
+          redirectTo: 'https://yeinerquirozlobo.github.io/HuertaEscolarIESJC/dashboard.html'
+        },
+      });
 
-      if (error) {
-        alert("❌ Error al registrarse: " + error.message);
-      } else {
-        alert("✅ Cuenta creada, revisa tu correo para confirmar");
-        console.log("Usuario registrado:", data);
-      }
-    });
-  }
+      if (error) {
+        alert("❌ Error al registrarse: " + error.message);
+      } else {
+        alert("✅ Cuenta creada, revisa tu correo para confirmar");
+        console.log("Usuario registrado:", data);
+      }
+    });
+  }
 });
