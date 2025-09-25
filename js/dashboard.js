@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await cargarPublicaciones();
 });
 
-// 2. Manejar cierre de sesión
+// 2. Manejar el cierre de sesión
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
         await supabase.auth.signOut();
@@ -27,7 +27,7 @@ if (logoutBtn) {
     });
 }
 
-// 3. Manejar formulario de publicación
+// 3. Manejar el formulario de publicación
 if (formPublicacion) {
     formPublicacion.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -39,6 +39,7 @@ if (formPublicacion) {
         }
         const user = session.user;
 
+        // Datos del formulario
         const producto = document.getElementById("producto").value;
         const cantidad = document.getElementById("cantidad").value;
         const unidad = document.getElementById("unidad").value;
@@ -48,6 +49,7 @@ if (formPublicacion) {
         const imagenFile = document.getElementById("imagen").files[0];
 
         try {
+            // Subir imagen al bucket "productos"
             let imagen_url = null;
             if (imagenFile) {
                 const fileName = `${Date.now()}-${user.id}-${imagenFile.name}`;
@@ -57,6 +59,7 @@ if (formPublicacion) {
 
                 if (imgError) throw imgError;
 
+                // Obtener URL pública
                 const { data: urlData } = supabase.storage
                     .from("productos")
                     .getPublicUrl(imgData.path);
@@ -64,21 +67,21 @@ if (formPublicacion) {
                 imagen_url = urlData.publicUrl;
             }
 
+            // Insertar publicación
             const { error } = await supabase
                 .from("publicaciones")
-                .insert([{
-                    user_id: user.id,
-                    producto,
-                    cantidad,
-                    unidad,
-                    producto_deseado: productoDeseado,
-                    cantidad_deseada: cantidadDeseada,
-                    unidad_deseada: unidadDeseada,
-                    imagen_url,
-                    publicacion_id: null, // es publicación original
-                    mensaje: "",
-                    estado: "activo"
-                }]);
+                .insert([
+                    {
+                        user_id: user.id,
+                        producto,
+                        cantidad,
+                        unidad,
+                        imagen_url,
+                        producto_deseado: productoDeseado,
+                        cantidad_deseada: cantidadDeseada,
+                        unidad_deseada: unidadDeseada
+                    }
+                ]);
 
             if (error) throw error;
 
@@ -93,18 +96,18 @@ if (formPublicacion) {
 }
 
 // 4. Función para eliminar publicación
-async function eliminarPublicacion(pubId) {
-    const confirmDelete = confirm("¿Deseas eliminar esta publicación?");
-    if (!confirmDelete) return;
+window.eliminarPublicacion = async function(id) {
+    if (!confirm("¿Seguro quieres eliminar esta publicación?")) return;
 
     try {
         const { error } = await supabase
             .from("publicaciones")
             .delete()
-            .eq("id", pubId);
+            .eq("id", id);
 
         if (error) throw error;
 
+        alert("✅ Publicación eliminada");
         await cargarPublicaciones();
     } catch (err) {
         console.error("❌ Error al eliminar publicación:", err.message);
@@ -112,27 +115,32 @@ async function eliminarPublicacion(pubId) {
     }
 }
 
-// 5. Función para agregar un intercambio
-async function agregarIntercambio(pubId, mensajeInput) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return alert("Debes iniciar sesión");
+// 5. Función para agregar intercambio
+window.agregarIntercambio = async function(publicacionId, inputElement) {
+    const mensaje = inputElement.value;
+    if (!mensaje) return;
 
-    const mensaje = mensajeInput.value;
-    if (!mensaje) return alert("El mensaje no puede estar vacío");
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+        alert("Debes iniciar sesión para ofrecer un intercambio.");
+        return;
+    }
 
     try {
         const { error } = await supabase
             .from("publicaciones")
-            .insert([{
-                user_id: session.user.id,
-                publicacion_id: pubId,
-                mensaje,
-                estado: "pendiente"
-            }]);
+            .insert([
+                {
+                    user_id: session.user.id,
+                    mensaje,
+                    publicacion_id: publicacionId,
+                    estado: "Pendiente"
+                }
+            ]);
 
         if (error) throw error;
 
-        mensajeInput.value = "";
+        inputElement.value = "";
         await cargarPublicaciones();
     } catch (err) {
         console.error("❌ Error al agregar intercambio:", err.message);
@@ -140,9 +148,12 @@ async function agregarIntercambio(pubId, mensajeInput) {
     }
 }
 
-// 6. Cargar y mostrar publicaciones con intercambios
+// 6. Cargar y mostrar publicaciones
 async function cargarPublicaciones() {
     feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUserId = session?.user.id;
 
     const { data, error } = await supabase
         .from("publicaciones")
@@ -164,8 +175,9 @@ async function cargarPublicaciones() {
         return;
     }
 
-    // Construir HTML
-    const htmlCards = await Promise.all(data.map(async pub => {
+    const htmlCards = [];
+
+    for (const pub of data) {
         const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
 
         // Traer intercambios de esta publicación
@@ -177,7 +189,7 @@ async function cargarPublicaciones() {
             `)
             .eq("publicacion_id", pub.id);
 
-        const htmlIntercambios = intercambios.map(i => {
+        const htmlIntercambios = (intercambios || []).map(i => {
             const nombreIntercambio = i.profiles ? i.profiles.full_name : "Usuario Desconocido";
             return `<p><strong>${nombreIntercambio}</strong>: ${i.mensaje} - <em>${i.estado}</em></p>`;
         }).join("");
@@ -191,11 +203,11 @@ async function cargarPublicaciones() {
         `;
 
         // Botón de eliminar solo si es el autor
-        const btnEliminar = (pub.user_id === (await supabase.auth.getSession()).data.session.user.id)
+        const btnEliminar = (pub.user_id === currentUserId)
             ? `<button class="btn btn-danger btn-sm mt-2" onclick="eliminarPublicacion(${pub.id})">Eliminar publicación</button>`
             : "";
 
-        return `
+        htmlCards.push(`
             <div class="card mb-3 shadow">
                 <div class="row g-0">
                     <div class="col-md-4">
@@ -216,12 +228,8 @@ async function cargarPublicaciones() {
                     </div>
                 </div>
             </div>
-        `;
-    }));
+        `);
+    }
 
     feedContainer.innerHTML = htmlCards.join("");
 }
-
-// Hacer disponibles las funciones globales para botones inline
-window.eliminarPublicacion = eliminarPublicacion;
-window.agregarIntercambio = agregarIntercambio;
