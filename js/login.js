@@ -1,13 +1,16 @@
 import { supabase } from "./supabaseClient.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-    
-    // --- Lógica para mostrar/ocultar formularios ---
-    const loginCard = document.getElementById("loginForm").parentElement.parentElement;
+
+    // --- Contenedores de los formularios ---
+    const loginCard = document.getElementById("loginCard");
     const registerCard = document.getElementById("registerCard");
+
+    // --- Enlaces para mostrar/ocultar formularios ---
     const showRegisterLink = document.getElementById("showRegister");
     const showLoginLink = document.getElementById("showLogin");
 
+    // Mostrar formulario de registro
     if (showRegisterLink && registerCard) {
         showRegisterLink.addEventListener("click", (e) => {
             e.preventDefault();
@@ -16,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Volver al login desde el registro
     if (showLoginLink && loginCard) {
         showLoginLink.addEventListener("click", (e) => {
             e.preventDefault();
@@ -66,7 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 email,
                 password,
                 options: {
-                    data: { full_name: name }, // metadata para trigger
+                    data: { full_name: name }, // metadata para trigger en profiles
                 },
             });
 
