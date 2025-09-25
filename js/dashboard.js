@@ -110,17 +110,20 @@ async function cargarPublicaciones() {
         return;
     }
 
+    // --- CONSOLE.LOG PARA DEPURAR ---
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user.id;
+    console.log("Usuario logueado ID:", userId);
+    console.log("Publicaciones recibidas:", data);
+
     if (!data || data.length === 0) {
         feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
         return;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session.user.id;
-
     const htmlCards = data.map(pub => {
         const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
-        const isAuthor = pub.user_id === userId;
+        const isAuthor = pub.user_id == userId; // doble igual por si hay diferencias de tipo
 
         return `
             <div class="card mb-3 shadow">
@@ -136,7 +139,7 @@ async function cargarPublicaciones() {
                             <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
                             <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
                             <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
-                            ${isAuthor ? `<button class="btn btn-danger btn-sm" onclick="eliminarPublicacion('${pub.id}')">Eliminar</button>` : ''}
+                            ${isAuthor ? `<button class="btn btn-danger btn-sm mt-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ""}
                         </div>
                     </div>
                 </div>
@@ -148,15 +151,19 @@ async function cargarPublicaciones() {
 }
 
 // 5. Función para eliminar publicación
-window.eliminarPublicacion = async (id) => {
-    if (!confirm("¿Seguro que quieres eliminar esta publicación?")) return;
+window.eliminarPublicacion = async function(id) {
+    if (!confirm("¿Deseas eliminar esta publicación?")) return;
 
-    const { error } = await supabase.from("publicaciones").delete().eq("id", id);
+    const { error } = await supabase
+        .from("publicaciones")
+        .delete()
+        .eq("id", id);
+
     if (error) {
-        alert("❌ Error al eliminar la publicación");
-        console.error(error);
+        console.error("❌ Error al eliminar publicación:", error.message);
+        alert("❌ No se pudo eliminar la publicación.");
     } else {
         alert("✅ Publicación eliminada");
-        cargarPublicaciones();
+        await cargarPublicaciones();
     }
-};
+}
