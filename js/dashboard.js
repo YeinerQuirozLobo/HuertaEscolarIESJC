@@ -1,25 +1,27 @@
 import { supabase } from "./supabaseClient.js";
 
-// Referencias DOM
+// Referencias a elementos del DOM
 const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Verificar sesión al cargar
+// Obtener sesión y usuario actual
+let usuarioActualId = null;
+
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    console.log("Sesión activa:", session);
-    console.log("Usuario autenticado ID:", session?.user.id);
-
     if (!session) {
         window.location.href = "index.html";
         return;
     }
+    usuarioActualId = session.user.id;
+    console.log("Sesión activa:", session);
+    console.log("Usuario autenticado ID:", usuarioActualId);
 
     await cargarPublicaciones();
 });
 
-// Cerrar sesión
+// Manejar cierre de sesión
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
         await supabase.auth.signOut();
@@ -27,24 +29,55 @@ if (logoutBtn) {
     });
 }
 
-// Publicar producto
+// Manejar formulario de publicación
 if (formPublicacion) {
     formPublicacion.addEventListener("submit", async (e) => {
         e.preventDefault();
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            alert("Debes iniciar sesión para publicar.");
+        if (!usuarioActualId) {
+            alert("Debes iniciar sesión para publicar un producto.");
             return;
         }
-        const user = session.user;
 
+        const producto = document.getElementById("producto").value;
+        const cantidad = document.getElementById("cantidad").value;
+        const unidad = document.getElementById("unidad").value;
+        const productoDeseado = document.getElementById("productoDeseado").value;
+        const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+        const unidadDeseada = document.getElementById("unidadDeseada").value;
         const mensaje = document.getElementById("mensaje").value;
+        const imagenFile = document.getElementById("imagen").files[0];
 
         try {
+            let imagen_url = null;
+            if (imagenFile) {
+                const fileName = `${Date.now()}-${usuarioActualId}-${imagenFile.name}`;
+                const { data: imgData, error: imgError } = await supabase.storage
+                    .from("productos")
+                    .upload(fileName, imagenFile);
+
+                if (imgError) throw imgError;
+
+                const { data: urlData } = supabase.storage
+                    .from("productos")
+                    .getPublicUrl(imgData.path);
+
+                imagen_url = urlData.publicUrl;
+            }
+
             const { error } = await supabase
                 .from("publicaciones")
-                .insert([{ user_id: user.id, mensaje, estado: "activo" }]);
+                .insert([{
+                    user_id: usuarioActualId,
+                    producto,
+                    cantidad,
+                    unidad,
+                    imagen_url,
+                    producto_deseado: productoDeseado,
+                    cantidad_deseada: cantidadDeseada,
+                    unidad_deseada: unidadDeseada,
+                    mensaje
+                }]);
 
             if (error) throw error;
 
@@ -53,7 +86,7 @@ if (formPublicacion) {
             await cargarPublicaciones();
         } catch (err) {
             console.error("❌ Error al publicar:", err.message);
-            alert("❌ No se pudo publicar.");
+            alert("❌ No se pudo publicar el producto.");
         }
     });
 }
@@ -65,10 +98,7 @@ async function cargarPublicaciones() {
     try {
         const { data, error } = await supabase
             .from("publicaciones")
-            .select(`
-                *,
-                profiles(full_name)
-            `)
+            .select(`*, profiles(full_name)`)
             .order("id", { ascending: false });
 
         if (error) throw error;
@@ -78,49 +108,60 @@ async function cargarPublicaciones() {
             return;
         }
 
-        const htmlCards = await Promise.all(data.map(async (pub) => {
+        const htmlCards = await Promise.all(data.map(async pub => {
             const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
 
-            // Cargar comentarios para la publicación
-            let comentariosHTML = "";
+            // Cargar comentarios de la publicación
+            let comentariosHtml = "";
             try {
-                const { data: comentarios } = await supabase
+                const { data: comentarios, error: errorComentarios } = await supabase
                     .from("comentarios")
-                    .select(`
-                        *,
-                        profiles(full_name)
-                    `)
+                    .select(`*, profiles(full_name)`)
                     .eq("publicacion_id", pub.id)
                     .order("id", { ascending: true });
 
-                comentariosHTML = comentarios.map(c => `
-                    <p><strong>${c.profiles?.full_name || "Desconocido"}:</strong> ${c.mensaje}</p>
-                `).join("");
+                if (!errorComentarios && comentarios.length > 0) {
+                    comentariosHtml = comentarios.map(c => `
+                        <p><strong>${c.profiles ? c.profiles.full_name : "Anonimo"}:</strong> ${c.mensaje}</p>
+                    `).join("");
+                }
             } catch (err) {
                 console.error("Error al cargar comentarios:", err.message);
-                comentariosHTML = "<p class='text-danger'>No se pudieron cargar los comentarios.</p>";
             }
 
             return `
-                <div class="card mb-3 shadow" id="publicacion-${pub.id}">
-                    <div class="card-body">
-                        <p>${pub.mensaje}</p>
-                        <p><small class="text-muted">Publicado por: ${authorName}</small></p>
-
-                        ${pub.user_id === supabase.auth.getUser().then(u => u.data.user.id) ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ""}
-
-                        <div class="mb-2">
-                            <h6>Comentarios:</h6>
-                            <div id="comentarios-${pub.id}">
-                                ${comentariosHTML}
-                            </div>
-                            <form onsubmit="enviarComentario(event, ${pub.id})">
-                                <input type="text" id="comentario-input-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario..." required>
-                                <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
-                            </form>
+                <div class="card mb-3 shadow">
+                    <div class="row g-0">
+                        <div class="col-md-4">
+                            <img src="${pub.imagen_url || "https://via.placeholder.com/150"}"
+                                 class="img-fluid rounded-start h-100 object-fit-cover"
+                                 alt="Imagen de ${pub.producto}">
                         </div>
+                        <div class="col-md-8">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">${pub.producto}</h5>
+                                <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
+                                <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
+                                <p class="card-text">${pub.mensaje || ""}</p>
+                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
 
-                        <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Realizar intercambio</button>
+                                ${pub.user_id === usuarioActualId ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ""}
+
+                                <!-- Formulario de comentarios -->
+                                <div class="mt-2">
+                                    <form onsubmit="enviarComentario(event, ${pub.id})">
+                                        <input type="text" class="form-control mb-1" id="comentario-${pub.id}" placeholder="Escribe un comentario..." required>
+                                        <button type="submit" class="btn btn-sm btn-primary mb-2">Enviar comentario</button>
+                                    </form>
+                                    <div id="comentarios-${pub.id}">
+                                        ${comentariosHtml}
+                                    </div>
+                                </div>
+
+                                <!-- Botón de intercambio -->
+                                <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -133,67 +174,53 @@ async function cargarPublicaciones() {
     }
 }
 
-// Eliminar publicación
-window.eliminarPublicacion = async (id) => {
+// Función para eliminar publicación
+window.eliminarPublicacion = async function(id) {
     if (!confirm("¿Deseas eliminar esta publicación?")) return;
     try {
-        const { error } = await supabase
-            .from("publicaciones")
-            .delete()
-            .eq("id", id);
+        const { error } = await supabase.from("publicaciones").delete().eq("id", id);
         if (error) throw error;
-        alert("✅ Publicación eliminada");
         await cargarPublicaciones();
     } catch (err) {
         console.error("Error al eliminar publicación:", err.message);
-        alert("❌ No se pudo eliminar la publicación.");
+        alert("No se pudo eliminar la publicación.");
     }
 };
 
-// Enviar comentario
-window.enviarComentario = async (e, publicacion_id) => {
+// Función para enviar comentario
+window.enviarComentario = async function(e, publicacionId) {
     e.preventDefault();
-    const input = document.getElementById(`comentario-input-${publicacion_id}`);
+    const input = document.getElementById(`comentario-${publicacionId}`);
     const mensaje = input.value.trim();
     if (!mensaje) return;
 
     try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error("Debes iniciar sesión");
-
-        const user = session.user;
-
-        const { error } = await supabase
-            .from("comentarios")
-            .insert([{ publicacion_id, user_id: user.id, mensaje }]);
+        const { error } = await supabase.from("comentarios").insert([{
+            publicacion_id: publicacionId,
+            user_id: usuarioActualId,
+            mensaje
+        }]);
         if (error) throw error;
-
         input.value = "";
         await cargarPublicaciones();
     } catch (err) {
         console.error("Error al enviar comentario:", err.message);
-        alert("❌ No se pudo enviar el comentario.");
+        alert("No se pudo enviar el comentario.");
     }
 };
 
-// Realizar intercambio
-window.realizarIntercambio = async (publicacion_id) => {
+// Función para solicitar intercambio
+window.realizarIntercambio = async function(publicacionId) {
     try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error("Debes iniciar sesión");
-        const user = session.user;
-
-        const mensaje = prompt("Escribe tu propuesta de intercambio:");
-        if (!mensaje) return;
-
-        const { error } = await supabase
-            .from("intercambios")
-            .insert([{ publicacion_id, user_id: user.id, mensaje, estado: "pendiente" }]);
+        const { error } = await supabase.from("intercambios").insert([{
+            publicacion_id: publicacionId,
+            user_id: usuarioActualId,
+            estado: "pendiente"
+        }]);
         if (error) throw error;
-
-        alert("✅ Intercambio registrado");
+        alert("✅ Solicitud de intercambio enviada");
     } catch (err) {
         console.error("Error al realizar intercambio:", err.message);
-        alert("❌ No se pudo registrar el intercambio.");
+        alert("No se pudo solicitar el intercambio.");
     }
 };
