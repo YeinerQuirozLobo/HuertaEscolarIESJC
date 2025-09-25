@@ -63,16 +63,17 @@ if (formPublicacion) {
                 .getPublicUrl(imgData.path);
 
             // Insertar la publicación en la tabla "publicaciones"
-            const { error } = await supabase.from("publicaciones").insert([{
-                user_id: user.id, // Esto es CRUCIAL para RLS
-                producto,
-                cantidad,
-                unidad,
-                imagen_url: urlData.publicUrl,
-                producto_deseado: productoDeseado,
-                cantidad_deseada: cantidadDeseada,
-                unidad_deseada: unidadDeseada
-            }]);
+const { error } = await supabase.from("publicaciones").insert([{
+    user_id: user.id,
+    producto,
+    cantidad: String(cantidad), // 👈 aseguramos texto
+    unidad,
+    imagen_url: urlData.publicUrl,
+    producto_deseado: productoDeseado,
+    cantidad_deseada: String(cantidadDeseada), // 👈 aseguramos texto
+    unidad_deseada: unidadDeseada
+}]);
+
 
             if (error) throw error;
 
