@@ -101,10 +101,7 @@ async function cargarPublicaciones() {
 
     const { data, error } = await supabase
         .from("publicaciones")
-        .select(`
-            *,
-            profiles(full_name)
-        `)
+        .select(`*, profiles(full_name)`)
         .order("id", { ascending: false });
 
     if (error) {
@@ -118,8 +115,13 @@ async function cargarPublicaciones() {
         return;
     }
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session.user.id;
+
     const htmlCards = data.map(pub => {
         const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
+        const isAuthor = pub.user_id === userId;
+
         return `
             <div class="card mb-3 shadow">
                 <div class="row g-0">
@@ -134,6 +136,7 @@ async function cargarPublicaciones() {
                             <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
                             <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
                             <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
+                            ${isAuthor ? `<button class="btn btn-danger btn-sm" onclick="eliminarPublicacion('${pub.id}')">Eliminar</button>` : ''}
                         </div>
                     </div>
                 </div>
@@ -144,3 +147,16 @@ async function cargarPublicaciones() {
     feedContainer.innerHTML = htmlCards;
 }
 
+// 5. Función para eliminar publicación
+window.eliminarPublicacion = async (id) => {
+    if (!confirm("¿Seguro que quieres eliminar esta publicación?")) return;
+
+    const { error } = await supabase.from("publicaciones").delete().eq("id", id);
+    if (error) {
+        alert("❌ Error al eliminar la publicación");
+        console.error(error);
+    } else {
+        alert("✅ Publicación eliminada");
+        cargarPublicaciones();
+    }
+};
