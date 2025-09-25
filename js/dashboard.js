@@ -9,6 +9,8 @@ const logoutBtn = document.getElementById("logoutBtn");
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session } } = await supabase.auth.getSession();
 console.log("Sesión activa:", session);
+    console.log("Usuario autenticado ID:", session?.user.id);
+
 
     // Si no hay sesión, redirigir al login
     if (!session) {
