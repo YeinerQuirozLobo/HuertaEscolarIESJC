@@ -95,37 +95,96 @@ if (formPublicacion) {
     });
 }
 
-// 4. Cargar y mostrar publicaciones
+// 4. Función para proponer un intercambio
+window.proponerIntercambio = async function(publicacionId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user.id;
+    const mensaje = document.getElementById(`mensajeIntercambio-${publicacionId}`).value;
+
+    if (!mensaje) {
+        alert("Debes escribir tu propuesta.");
+        return;
+    }
+
+    const { error } = await supabase
+        .from("intercambios")
+        .insert([{ publicacion_id: publicacionId, user_id: userId, mensaje, estado: "pendiente" }]);
+
+    if (error) {
+        console.error("❌ Error al registrar intercambio:", error.message);
+        alert("No se pudo registrar el intercambio.");
+    } else {
+        alert("✅ Intercambio propuesto con éxito");
+        document.getElementById(`mensajeIntercambio-${publicacionId}`).value = "";
+        cargarPublicaciones(); // recarga para mostrar los intercambios
+    }
+}
+
+// 5. Función para eliminar publicación
+window.eliminarPublicacion = async function(publicacionId) {
+    const confirmDelete = confirm("¿Seguro deseas eliminar esta publicación?");
+    if (!confirmDelete) return;
+
+    const { error } = await supabase
+        .from("publicaciones")
+        .delete()
+        .eq("id", publicacionId);
+
+    if (error) {
+        console.error("❌ Error al eliminar publicación:", error.message);
+        alert("No se pudo eliminar la publicación.");
+    } else {
+        alert("✅ Publicación eliminada");
+        cargarPublicaciones();
+    }
+}
+
+// 6. Cargar y mostrar publicaciones con intercambios
 async function cargarPublicaciones() {
     feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
 
-    const { data, error } = await supabase
+    const { data: publicaciones, error: pubError } = await supabase
         .from("publicaciones")
-        .select(`*, profiles(full_name)`)
+        .select(`
+            *,
+            profiles(full_name)
+        `)
         .order("id", { ascending: false });
 
-    if (error) {
-        console.error("❌ Error al cargar publicaciones:", error.message);
+    if (pubError) {
+        console.error("❌ Error al cargar publicaciones:", pubError.message);
         feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
         return;
     }
 
-    // --- CONSOLE.LOG PARA DEPURAR ---
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user.id;
-    console.log("Usuario logueado ID:", userId);
-    console.log("Publicaciones recibidas:", data);
-
-    if (!data || data.length === 0) {
+    if (!publicaciones || publicaciones.length === 0) {
         feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
         return;
     }
 
-    const htmlCards = data.map(pub => {
-        const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
-        const isAuthor = pub.user_id == userId; // doble igual por si hay diferencias de tipo
+    let htmlCards = "";
 
-        return `
+    for (const pub of publicaciones) {
+        const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
+
+        // Traer intercambios de esta publicación
+        const { data: intercambios } = await supabase
+            .from("intercambios")
+            .select(`*, profiles(full_name)`)
+            .eq("publicacion_id", pub.id);
+
+        const intercambiosHtml = intercambios && intercambios.length > 0
+            ? `<ul>${intercambios.map(i => `<li>${i.mensaje} - por ${i.profiles.full_name} [${i.estado}]</li>`).join("")}</ul>`
+            : "<p>No hay intercambios aún.</p>";
+
+        // Mostrar botón eliminar solo si el usuario es el autor
+        const { data: { session } } = await supabase.auth.getSession();
+        const currentUserId = session?.user.id;
+        const eliminarBtn = currentUserId === pub.user_id
+            ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>`
+            : "";
+
+        htmlCards += `
             <div class="card mb-3 shadow">
                 <div class="row g-0">
                     <div class="col-md-4">
@@ -135,35 +194,25 @@ async function cargarPublicaciones() {
                     </div>
                     <div class="col-md-8">
                         <div class="card-body">
+                            ${eliminarBtn}
                             <h5 class="card-title text-primary">${pub.producto}</h5>
                             <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
                             <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
                             <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
-                            ${isAuthor ? `<button class="btn btn-danger btn-sm mt-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ""}
+
+                            <hr>
+                            <h6>Proponer un intercambio:</h6>
+                            <textarea id="mensajeIntercambio-${pub.id}" class="form-control mb-2" placeholder="Escribe lo que ofreces..."></textarea>
+                            <button class="btn btn-success btn-sm mb-2" onclick="proponerIntercambio(${pub.id})">Proponer intercambio</button>
+
+                            <h6>Intercambios:</h6>
+                            ${intercambiosHtml}
                         </div>
                     </div>
                 </div>
             </div>
         `;
-    }).join("");
+    }
 
     feedContainer.innerHTML = htmlCards;
-}
-
-// 5. Función para eliminar publicación
-window.eliminarPublicacion = async function(id) {
-    if (!confirm("¿Deseas eliminar esta publicación?")) return;
-
-    const { error } = await supabase
-        .from("publicaciones")
-        .delete()
-        .eq("id", id);
-
-    if (error) {
-        console.error("❌ Error al eliminar publicación:", error.message);
-        alert("❌ No se pudo eliminar la publicación.");
-    } else {
-        alert("✅ Publicación eliminada");
-        await cargarPublicaciones();
-    }
 }
