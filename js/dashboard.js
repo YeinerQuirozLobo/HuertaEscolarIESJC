@@ -8,6 +8,7 @@ const logoutBtn = document.getElementById("logoutBtn");
 // 1. Verificar la sesión del usuario al cargar la página
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session } } = await supabase.auth.getSession();
+console.log("Sesión activa:", session);
 
     // Si no hay sesión, redirigir al login
     if (!session) {
