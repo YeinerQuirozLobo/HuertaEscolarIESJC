@@ -5,7 +5,7 @@ const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Verificar sesión al cargar la página
+// 1. Verificar la sesión del usuario al cargar la página
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session } } = await supabase.auth.getSession();
     console.log("Sesión activa:", session);
@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await cargarPublicaciones();
 });
 
-// Manejar cierre de sesión
+// 2. Manejar el cierre de sesión
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
         await supabase.auth.signOut();
@@ -27,7 +27,7 @@ if (logoutBtn) {
     });
 }
 
-// Manejar formulario de publicación
+// 3. Manejar el formulario de publicación
 if (formPublicacion) {
     formPublicacion.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -39,13 +39,14 @@ if (formPublicacion) {
         }
         const user = session.user;
 
+        // Datos del formulario
         const producto = document.getElementById("producto").value;
         const cantidad = document.getElementById("cantidad").value;
         const unidad = document.getElementById("unidad").value;
         const productoDeseado = document.getElementById("productoDeseado").value;
         const cantidadDeseada = document.getElementById("cantidadDeseada").value;
         const unidadDeseada = document.getElementById("unidadDeseada").value;
-        const mensaje = `${producto} ${cantidad} ${unidad}, cambio por ${productoDeseado} ${cantidadDeseada} ${unidadDeseada}`;
+        const mensaje = document.getElementById("mensaje").value || "";
         const imagenFile = document.getElementById("imagen").files[0];
 
         try {
@@ -56,12 +57,14 @@ if (formPublicacion) {
                 const { data: imgData, error: imgError } = await supabase.storage
                     .from("productos")
                     .upload(fileName, imagenFile);
+
                 if (imgError) throw imgError;
 
-                // URL pública
+                // Obtener URL pública
                 const { data: urlData } = supabase.storage
                     .from("productos")
                     .getPublicUrl(imgData.path);
+
                 imagen_url = urlData.publicUrl;
             }
 
@@ -71,11 +74,17 @@ if (formPublicacion) {
                 .insert([
                     {
                         user_id: user.id,
-                        mensaje,
-                        estado: "activo",
-                        imagen_url
+                        producto,
+                        cantidad,
+                        unidad,
+                        imagen_url,
+                        producto_deseado: productoDeseado,
+                        cantidad_deseada: cantidadDeseada,
+                        unidad_deseada: unidadDeseada,
+                        mensaje
                     }
                 ]);
+
             if (error) throw error;
 
             alert("✅ Publicación realizada con éxito");
@@ -88,117 +97,145 @@ if (formPublicacion) {
     });
 }
 
-// Función para eliminar publicación
-async function eliminarPublicacion(pubId) {
-    const confirmDelete = confirm("¿Seguro que quieres eliminar esta publicación?");
-    if (!confirmDelete) return;
-
-    try {
-        const { error } = await supabase
-            .from("publicaciones")
-            .delete()
-            .eq("id", pubId);
-        if (error) throw error;
-
-        await cargarPublicaciones();
-    } catch (err) {
-        console.error("❌ Error al eliminar:", err.message);
-        alert("No se pudo eliminar la publicación.");
-    }
-}
-
-// Función para realizar intercambio
-async function aceptarIntercambio(pubId) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-        alert("Debes iniciar sesión para aceptar un intercambio.");
-        return;
-    }
-    const user = session.user;
-
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .insert([
-                {
-                    publicacion_id: pubId,
-                    user_id: user.id,
-                    estado: "pendiente"
-                }
-            ]);
-        if (error) throw error;
-
-        await cargarPublicaciones();
-    } catch (err) {
-        console.error("❌ Error al aceptar intercambio:", err.message);
-        alert("No se pudo aceptar el intercambio.");
-    }
-}
-
-// Cargar y mostrar publicaciones
+// 4. Cargar y mostrar publicaciones
 async function cargarPublicaciones() {
     feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
 
-    try {
-        const { data, error } = await supabase
-            .from("publicaciones")
+    const { data, error } = await supabase
+        .from("publicaciones")
+        .select(`
+            *,
+            profiles(full_name)
+        `)
+        .order("id", { ascending: false });
+
+    if (error) {
+        console.error("❌ Error al cargar publicaciones:", error.message);
+        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
+        return;
+    }
+
+    if (!data || data.length === 0) {
+        feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
+        return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+
+    const htmlCards = await Promise.all(data.map(async pub => {
+        const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
+
+        // Obtener intercambios aceptados para la publicación
+        const { data: intercambios } = await supabase
+            .from("intercambios")
             .select(`
                 *,
-                profiles(full_name),
-                intercambios(user_id)
+                profiles(full_name)
             `)
-            .order("id", { ascending: false });
+            .eq("publicacion_id", pub.id);
 
-        if (error) throw error;
+        // Obtener comentarios de la publicación
+        const { data: comentarios } = await supabase
+            .from("comentarios")
+            .select(`
+                *,
+                profiles(full_name)
+            `)
+            .eq("publicacion_id", pub.id)
+            .order("id", { ascending: true });
 
-        if (!data || data.length === 0) {
-            feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
-            return;
-        }
+        // HTML de comentarios
+        const htmlComentarios = comentarios?.map(c => `<p><strong>${c.profiles?.full_name || "Anon"}:</strong> ${c.mensaje}</p>`).join("") || "<p class='text-muted'>No hay comentarios aún.</p>";
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user.id;
+        // HTML de intercambios
+        const htmlIntercambios = intercambios?.map(i => `<p>${i.profiles?.full_name || "Anon"} aceptó el intercambio</p>`).join("") || "<p class='text-muted'>No hay intercambios aceptados aún.</p>";
 
-        const htmlCards = data.map(pub => {
-            const authorName = pub.profiles ? pub.profiles.full_name : "Usuario Desconocido";
-            const esAutor = userId === pub.user_id;
-            const intercambiosHtml = pub.intercambios?.length
-                ? pub.intercambios.map(i => `<li>Usuario ID: ${i.user_id}</li>`).join("")
-                : "<li>No hay intercambios aún</li>";
+        return `
+            <div class="card mb-3 shadow">
+                <div class="row g-0">
+                    <div class="col-md-4">
+                        <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
+                             class="img-fluid rounded-start h-100 object-fit-cover" 
+                             alt="Imagen de ${pub.producto}">
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card-body">
+                            <h5 class="card-title text-primary">${pub.producto}</h5>
+                            <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
+                            <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
+                            <p class="card-text">${pub.mensaje || ""}</p>
+                            <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
 
-            return `
-                <div class="card mb-3 shadow">
-                    <div class="row g-0">
-                        <div class="col-md-4">
-                            <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
-                                 class="img-fluid rounded-start h-100 object-fit-cover" 
-                                 alt="Imagen de la publicación">
-                        </div>
-                        <div class="col-md-8">
-                            <div class="card-body">
-                                <p class="card-text">${pub.mensaje}</p>
-                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
-                                
-                                ${esAutor ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ""}
-                                
-                                <button class="btn btn-success btn-sm mb-2" onclick="aceptarIntercambio(${pub.id})">Aceptar Intercambio</button>
-                                <ul>
-                                    ${intercambiosHtml}
-                                </ul>
+                            ${userId === pub.user_id ? `<button class="btn btn-danger mb-2 btnEliminar" data-id="${pub.id}">Eliminar publicación</button>` : ""}
+                            
+                            <button class="btn btn-success mb-2 btnAceptar" data-id="${pub.id}">Aceptar intercambio</button>
+
+                            <div class="mt-2">
+                                <h6>Intercambios:</h6>
+                                <div>${htmlIntercambios}</div>
+                            </div>
+
+                            <div class="mt-2">
+                                <h6>Comentarios:</h6>
+                                <div id="comentarios-${pub.id}">${htmlComentarios}</div>
+                                <form class="mt-2 formComentario" data-id="${pub.id}">
+                                    <input type="text" class="form-control mb-1" placeholder="Escribe un comentario..." required>
+                                    <button type="submit" class="btn btn-primary btn-sm w-100">Comentar</button>
+                                </form>
                             </div>
                         </div>
                     </div>
                 </div>
-            `;
-        }).join("");
+            </div>
+        `;
+    }));
 
-        feedContainer.innerHTML = htmlCards;
-    } catch (err) {
-        console.error("❌ Error al cargar publicaciones:", err.message);
-        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
-    }
+    feedContainer.innerHTML = htmlCards.join("");
+
+    // Agregar listeners de eliminar
+    document.querySelectorAll(".btnEliminar").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const pubId = btn.getAttribute("data-id");
+            if (confirm("¿Seguro deseas eliminar esta publicación?")) {
+                await supabase.from("publicaciones").delete().eq("id", pubId);
+                await cargarPublicaciones();
+            }
+        });
+    });
+
+    // Agregar listeners de aceptar intercambio
+    document.querySelectorAll(".btnAceptar").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const pubId = btn.getAttribute("data-id");
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session.user;
+
+            await supabase.from("intercambios").insert([
+                { publicacion_id: pubId, user_id: user.id }
+            ]);
+            await cargarPublicaciones();
+        });
+    });
+
+    // Agregar listeners de comentarios
+    document.querySelectorAll(".formComentario").forEach(form => {
+        form.addEventListener("submit", async e => {
+            e.preventDefault();
+            const pubId = form.getAttribute("data-id");
+            const input = form.querySelector("input");
+            const mensaje = input.value.trim();
+            if (!mensaje) return;
+
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session.user;
+
+            await supabase.from("comentarios").insert([
+                { publicacion_id: pubId, user_id: user.id, mensaje }
+            ]);
+
+            input.value = "";
+            await cargarPublicaciones();
+        });
+    });
 }
-
-// Exponer funciones al scope global para botones inline
-window.eliminarPublicacion = eliminarPublicacion;
-window.aceptarIntercambio = aceptarIntercambio;
