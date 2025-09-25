@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 document.addEventListener("DOMContentLoaded", () => {
     
     // --- Lógica para mostrar/ocultar formularios ---
-    const loginCard = document.getElementById("loginCard");
+    const loginCard = document.getElementById("loginForm").parentElement.parentElement;
     const registerCard = document.getElementById("registerCard");
     const showRegisterLink = document.getElementById("showRegister");
     const showLoginLink = document.getElementById("showLogin");
@@ -25,7 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --- LOGIN ---
-    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    const loginForm = document.getElementById("loginForm");
+    loginForm.addEventListener("submit", async (e) => {
         e.preventDefault();
 
         const email = document.getElementById("loginEmail").value;
@@ -42,9 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             alert("✅ Inicio de sesión exitoso");
             console.log("Sesión:", data);
-            
-            // Redirigir a otra página después de login
-            window.location.href = "dashboard.html";
+            window.location.href = "dashboard.html"; // Redirigir al dashboard
         }
     });
 
@@ -67,7 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 email,
                 password,
                 options: {
-                    data: { full_name: name },
+                    data: { full_name: name }, // metadata para trigger
                 },
             });
 
@@ -76,6 +75,13 @@ document.addEventListener("DOMContentLoaded", () => {
             } else {
                 alert("✅ Cuenta creada, revisa tu correo para confirmar");
                 console.log("Usuario registrado:", data);
+
+                // Mostrar login y ocultar registro
+                loginCard.style.display = "block";
+                registerCard.style.display = "none";
+
+                // Limpiar formulario de registro
+                registerForm.reset();
             }
         });
     }
