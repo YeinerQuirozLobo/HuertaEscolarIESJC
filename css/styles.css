@@ -3,20 +3,25 @@
     --color-negro: #212529;
     --color-amarillo: #FFC107;
     --color-azul: #0D6EFD;
+    --color-amarillo-hover: #e0a800;
+    --color-azul-hover: #0b5ed7;
+    --sombra-suave: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --sombra-fuerte: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 /* Estilos generales y tipografía */
 body {
-    background-color: #f8f9fa;
+    background: linear-gradient(135deg, #f8f9fa, #ffffff);
     color: var(--color-negro);
     font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    min-height: 100vh;
 }
 
 /* Navbar */
 .navbar {
     background-color: var(--color-negro) !important;
     padding: 0.75rem 1rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--sombra-suave);
 }
 
 .navbar-brand {
@@ -32,8 +37,9 @@ body {
     transform: scale(1.05);
 }
 
+/* Logo pequeño (navbar) */
 .school-logo {
-    height: 40px; /* Ajusta el tamaño del escudo */
+    height: 40px;
     transition: transform 0.3s ease-in-out;
 }
 
@@ -41,6 +47,18 @@ body {
     transform: rotate(10deg);
 }
 
+/* Logo grande (login page) */
+.school-logo-large {
+    width: 150px;
+    height: auto;
+    transition: transform 0.3s ease-in-out;
+}
+
+.school-logo-large:hover {
+    transform: rotate(10deg);
+}
+
+/* Botones */
 .btn-outline-light {
     color: var(--color-amarillo);
     border-color: var(--color-amarillo);
@@ -52,41 +70,54 @@ body {
     color: var(--color-negro);
 }
 
-/* Formularios de inicio de sesión y registro */
-.card {
-    border: none;
-    border-radius: 1rem;
-    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-    background-color: #fff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
-
 .btn-primary {
     background-color: var(--color-azul);
     border-color: var(--color-azul);
-    transition: background-color 0.3s ease;
+    transition: background-color 0.3s ease, transform 0.2s ease-in-out;
 }
 
 .btn-primary:hover {
-    background-color: #0b5ed7;
-    border-color: #0b5ed7;
+    background-color: var(--color-azul-hover);
+    border-color: var(--color-azul-hover);
+    transform: translateY(-2px);
 }
 
 .btn-success {
     background-color: var(--color-amarillo);
     border-color: var(--color-amarillo);
     color: var(--color-negro);
-    transition: background-color 0.3s ease;
+    transition: background-color 0.3s ease, transform 0.2s ease-in-out;
 }
 
 .btn-success:hover {
-    background-color: #e0a800;
-    border-color: #e0a800;
+    background-color: var(--color-amarillo-hover);
+    border-color: var(--color-amarillo-hover);
+    color: var(--color-negro);
+    transform: translateY(-2px);
+}
+
+/* Formularios de inicio de sesión y registro */
+.card {
+    border: none;
+    border-radius: 1rem;
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+    background-color: #fff;
+    box-shadow: var(--sombra-suave);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--sombra-fuerte);
+}
+
+/* Títulos dentro de tarjetas */
+.card h2 {
+    color: var(--color-azul);
+    font-weight: bold;
+}
+
+.card label {
+    font-weight: 500;
     color: var(--color-negro);
 }
 
@@ -112,7 +143,7 @@ body {
 
 .feed .card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--sombra-fuerte);
 }
 
 .card-img-container {
@@ -136,4 +167,14 @@ body {
 /* Espacio entre los elementos del feed */
 .col-md-8 #feed > div {
     margin-bottom: 1.5rem;
+}
+
+/* Animación suave al mostrar formularios */
+#loginCard, #registerCard {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
 }
