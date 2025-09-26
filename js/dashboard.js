@@ -141,7 +141,7 @@ async function cargarPublicaciones() {
 
         feedContainer.innerHTML = htmlCards;
 
-        // Cargar comentarios y intercambios por cada publicación
+        // Cargar comentarios e intercambios por cada publicación
         data.forEach(pub => {
             cargarComentarios(pub.id);
             cargarIntercambios(pub.id);
@@ -215,12 +215,46 @@ async function cargarComentarios(pubId) {
             return;
         }
 
-        container.innerHTML = data.map(c => `<p><strong>${c.profiles.full_name}:</strong> ${c.mensaje}</p>`).join("");
+        container.innerHTML = data.map(c => {
+            const isCommentOwner = c.user_id === currentUserId;
+            return `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <p class="mb-0">
+                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
+                    </p>
+                    ${isCommentOwner ? `
+                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
+                            🗑️
+                        </button>` : ""}
+                </div>
+            `;
+        }).join("");
     } catch (err) {
         console.error("❌ Error al cargar comentarios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
     }
 }
+
+// Función para eliminar comentario
+window.eliminarComentario = async (comentarioId, pubId) => {
+    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
+
+    try {
+        const { error } = await supabase
+            .from("comentarios")
+            .delete()
+            .eq("id", comentarioId)
+            .eq("user_id", currentUserId);
+
+        if (error) throw error;
+
+        alert("✅ Comentario eliminado");
+        cargarComentarios(pubId);
+    } catch (err) {
+        console.error("❌ Error al eliminar comentario:", err.message);
+        alert("❌ No se pudo eliminar el comentario.");
+    }
+};
 
 // Función para realizar intercambio
 window.realizarIntercambio = async (pubId) => {
