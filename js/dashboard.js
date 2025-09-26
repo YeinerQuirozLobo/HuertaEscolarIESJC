@@ -1,171 +1,350 @@
 import { supabase } from "./supabaseClient.js";
 
-// Renderizar publicaciones en el feed
-async function renderPosts() {
-    const { data: posts, error } = await supabase
-        .from("posts")
-        .select(`
-            id, titulo, descripcion, imagen_url, created_at, user_id,
-            users ( id, nombre, email )
-        `)
-        .order("created_at", { ascending: false });
+// Referencias a elementos del DOM
+const formPublicacion = document.getElementById("formPublicacion");
+const feedContainer = document.getElementById("feed");
+const logoutBtn = document.getElementById("logoutBtn");
 
-    if (error) {
-        console.error("Error cargando publicaciones:", error);
+// Obtener sesión y usuario actual
+let currentUserId = null;
+
+document.addEventListener("DOMContentLoaded", async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    console.log("Sesión activa:", session);
+    if (!session) {
+        window.location.href = "index.html";
         return;
     }
+    currentUserId = session.user.id;
+    console.log("Usuario autenticado ID:", currentUserId);
 
-    const feed = document.getElementById("feed");
-    feed.innerHTML = "";
+    await cargarPublicaciones();
+});
 
-    const {
-        data: { user }
-    } = await supabase.auth.getUser();
-
-    for (const post of posts) {
-        // Consultar solicitudes de intercambio de este post
-        const { data: solicitudes, error: errorSolicitudes } = await supabase
-            .from("intercambios")
-            .select(`
-                id, estado, solicitante_id,
-                solicitante:users ( id, nombre, email )
-            `)
-            .eq("post_id", post.id);
-
-        if (errorSolicitudes) {
-            console.error("Error cargando solicitudes:", errorSolicitudes);
-        }
-
-        // Construir tarjeta
-        const card = document.createElement("div");
-        card.className = "card mb-3";
-
-        card.innerHTML = `
-            <div class="card-body">
-                <h5 class="card-title">${post.titulo}</h5>
-                <p class="card-text">${post.descripcion}</p>
-                ${post.imagen_url ? `<img src="${post.imagen_url}" class="img-fluid mb-2">` : ""}
-                <p class="text-muted">Publicado por ${post.users?.nombre || "Anónimo"}</p>
-
-                ${
-                    user && user.id !== post.user_id
-                        ? `<button class="btn btn-sm btn-primary solicitar-btn" data-id="${post.id}">
-                            Solicitar Intercambio
-                           </button>`
-                        : ""
-                }
-
-                <div class="mt-3 solicitudes">
-                    <h6>Solicitudes de intercambio:</h6>
-                    ${
-                        solicitudes?.length > 0
-                            ? solicitudes
-                                  .map(
-                                      (s) => `
-                            <div class="d-flex justify-content-between align-items-center border p-2 mb-1">
-                                <span>
-                                    ${s.solicitante?.nombre || "Desconocido"} - Estado: ${s.estado}
-                                </span>
-                                ${
-                                    user && user.id === post.user_id && s.estado === "pendiente"
-                                        ? `
-                                    <div>
-                                        <button class="btn btn-sm btn-success aceptar-btn" data-id="${s.id}">Aceptar</button>
-                                        <button class="btn btn-sm btn-danger rechazar-btn" data-id="${s.id}">Rechazar</button>
-                                    </div>
-                                    `
-                                        : ""
-                                }
-                            </div>
-                        `
-                                  )
-                                  .join("")
-                            : "<p class='text-muted'>No hay solicitudes de intercambio</p>"
-                    }
-                </div>
-            </div>
-        `;
-
-        feed.appendChild(card);
-    }
-
-    // Eventos de solicitar intercambio
-    document.querySelectorAll(".solicitar-btn").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
-            const postId = e.target.dataset.id;
-
-            const {
-                data: { user }
-            } = await supabase.auth.getUser();
-
-            if (!user) {
-                alert("Debes iniciar sesión para solicitar un intercambio.");
-                return;
-            }
-
-            const { error } = await supabase.from("intercambios").insert([
-                { post_id: postId, solicitante_id: user.id, estado: "pendiente" }
-            ]);
-
-            if (error) {
-                console.error("Error solicitando intercambio:", error);
-                alert("No se pudo solicitar el intercambio.");
-                return;
-            }
-
-            // Refrescar publicaciones
-            renderPosts();
-        });
-    });
-
-    // Eventos de aceptar/rechazar intercambio
-    document.querySelectorAll(".aceptar-btn").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
-            const id = e.target.dataset.id;
-
-            const { error } = await supabase
-                .from("intercambios")
-                .update({ estado: "aceptado" })
-                .eq("id", id);
-
-            if (error) {
-                console.error("Error aceptando intercambio:", error);
-                alert("No se pudo aceptar el intercambio.");
-                return;
-            }
-
-            renderPosts();
-        });
-    });
-
-    document.querySelectorAll(".rechazar-btn").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
-            const id = e.target.dataset.id;
-
-            const { error } = await supabase
-                .from("intercambios")
-                .update({ estado: "rechazado" })
-                .eq("id", id);
-
-            if (error) {
-                console.error("Error rechazando intercambio:", error);
-                alert("No se pudo rechazar el intercambio.");
-                return;
-            }
-
-            renderPosts();
-        });
+// Logout
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+        await supabase.auth.signOut();
+        window.location.href = "index.html";
     });
 }
 
-// Escuchar cambios en autenticación y cargar posts
-supabase.auth.onAuthStateChange((event, session) => {
-    if (session) {
-        renderPosts();
-    } else {
-        window.location.href = "index.html"; // Redirigir si no hay sesión
-    }
-});
+// Manejar formulario de publicación
+if (formPublicacion) {
+    formPublicacion.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const producto = document.getElementById("producto").value;
+        const cantidad = document.getElementById("cantidad").value;
+        const unidad = document.getElementById("unidad").value;
+        const productoDeseado = document.getElementById("productoDeseado").value;
+        const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+        const unidadDeseada = document.getElementById("unidadDeseada").value;
+        const imagenFile = document.getElementById("imagen").files[0];
 
-// Primera carga
-renderPosts();
+        try {
+            let imagen_url = null;
+            if (imagenFile) {
+                const fileName = `${Date.now()}-${currentUserId}-${imagenFile.name}`;
+                const { data: imgData, error: imgError } = await supabase.storage
+                    .from("productos")
+                    .upload(fileName, imagenFile);
+                if (imgError) throw imgError;
+
+                const { data: urlData } = supabase.storage
+                    .from("productos")
+                    .getPublicUrl(imgData.path);
+                imagen_url = urlData.publicUrl;
+            }
+
+            const { error } = await supabase
+                .from("publicaciones")
+                .insert([{
+                    user_id: currentUserId,
+                    producto,
+                    cantidad,
+                    unidad,
+                    imagen_url,
+                    producto_deseado: productoDeseado,
+                    cantidad_deseada: cantidadDeseada,
+                    unidad_deseada: unidadDeseada
+                }]);
+            if (error) throw error;
+
+            alert("✅ Publicación realizada con éxito");
+            formPublicacion.reset();
+            await cargarPublicaciones();
+        } catch (err) {
+            console.error("❌ Error al publicar:", err.message);
+            alert("❌ No se pudo publicar el producto.");
+        }
+    });
+}
+
+// Función para cargar publicaciones
+async function cargarPublicaciones() {
+    feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
+
+    try {
+        const { data, error } = await supabase
+            .from("publicaciones")
+            .select(`
+                *,
+                profiles!inner(id, full_name)
+            `)
+            .order("id", { ascending: false });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
+            return;
+        }
+
+        const htmlCards = data.map(pub => {
+            const authorName = pub.profiles.full_name;
+            const isOwner = pub.user_id === currentUserId;
+
+            return `
+                <div class="card mb-3 shadow">
+                    <div class="row g-0">
+                        <div class="col-md-4">
+                            <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
+                                 class="img-fluid rounded-start h-100 object-fit-cover" 
+                                 alt="Imagen de ${pub.producto}">
+                        </div>
+                        <div class="col-md-8">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">${pub.producto}</h5>
+                                <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
+                                <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
+                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
+
+                                ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
+
+                                <div class="mb-2">
+                                    <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
+                                    <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
+                                </div>
+
+                                ${!isOwner ? `
+                                    <div class="mb-2">
+                                        <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
+                                    </div>` : ""}
+
+                                <div id="comentarios-${pub.id}"></div>
+                                <div id="intercambios-${pub.id}"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        feedContainer.innerHTML = htmlCards;
+
+        // Cargar comentarios e intercambios por cada publicación
+        data.forEach(pub => {
+            cargarComentarios(pub.id);
+            cargarIntercambios(pub.id, pub.user_id);
+        });
+
+    } catch (err) {
+        console.error("❌ Error al cargar publicaciones:", err.message);
+        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
+    }
+}
+
+// Función para eliminar publicación
+window.eliminarPublicacion = async (pubId) => {
+    if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
+
+    try {
+        const { error } = await supabase
+            .from("publicaciones")
+            .delete()
+            .eq("id", pubId)
+            .eq("user_id", currentUserId);
+
+        if (error) throw error;
+        alert("✅ Publicación eliminada");
+        await cargarPublicaciones();
+    } catch (err) {
+        console.error("❌ Error al eliminar publicación:", err.message);
+        alert("❌ No se pudo eliminar la publicación.");
+    }
+};
+
+// Función para enviar comentario
+window.enviarComentario = async (pubId) => {
+    const textarea = document.getElementById(`comentario-${pubId}`);
+    const mensaje = textarea.value.trim();
+    if (!mensaje) return;
+
+    try {
+        const { error } = await supabase
+            .from("comentarios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
+        if (error) throw error;
+
+        textarea.value = "";
+        cargarComentarios(pubId);
+    } catch (err) {
+        console.error("❌ Error al enviar comentario:", err.message);
+        alert("❌ No se pudo enviar el comentario.");
+    }
+};
+
+// Función para cargar comentarios
+async function cargarComentarios(pubId) {
+    const container = document.getElementById(`comentarios-${pubId}`);
+    container.innerHTML = "Cargando comentarios...";
+
+    try {
+        const { data, error } = await supabase
+            .from("comentarios")
+            .select(`
+                *,
+                profiles!inner(id, full_name)
+            `)
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
+            return;
+        }
+
+        container.innerHTML = data.map(c => {
+            const isCommentOwner = c.user_id === currentUserId;
+            return `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <p class="mb-0">
+                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
+                    </p>
+                    ${isCommentOwner ? `
+                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
+                            🗑️
+                        </button>` : ""}
+                </div>
+            `;
+        }).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar comentarios:", err.message);
+        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
+    }
+}
+
+// Función para eliminar comentario
+window.eliminarComentario = async (comentarioId, pubId) => {
+    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
+
+    try {
+        const { error } = await supabase
+            .from("comentarios")
+            .delete()
+            .eq("id", comentarioId)
+            .eq("user_id", currentUserId);
+
+        if (error) throw error;
+
+        alert("✅ Comentario eliminado");
+        cargarComentarios(pubId);
+    } catch (err) {
+        console.error("❌ Error al eliminar comentario:", err.message);
+        alert("❌ No se pudo eliminar el comentario.");
+    }
+};
+
+// Función para realizar intercambio
+window.realizarIntercambio = async (pubId) => {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, estado: "pendiente" }]);
+        if (error) throw error;
+
+        cargarIntercambios(pubId);
+    } catch (err) {
+        console.error("❌ Error al realizar intercambio:", err.message);
+        alert("❌ No se pudo solicitar el intercambio.");
+    }
+};
+
+// Función para cargar intercambios
+async function cargarIntercambios(pubId, pubOwnerId) {
+    const container = document.getElementById(`intercambios-${pubId}`);
+    container.innerHTML = "";
+
+    try {
+        const { data, error } = await supabase
+            .from("intercambios")
+            .select(`
+                *,
+                profiles!inner(id, full_name)
+            `)
+            .eq("publicacion_id", pubId);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
+            return;
+        }
+
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + data.map(i => {
+            if (pubOwnerId === currentUserId) {
+                // El dueño puede aceptar o rechazar
+                return `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span>${i.profiles.full_name} - <em>${i.estado}</em></span>
+                        ${i.estado === "pendiente" ? `
+                            <div>
+                                <button class="btn btn-sm btn-success me-1" onclick="aceptarIntercambio(${i.id}, ${pubId})">Aceptar</button>
+                                <button class="btn btn-sm btn-danger" onclick="rechazarIntercambio(${i.id}, ${pubId})">Rechazar</button>
+                            </div>` : ""}
+                    </div>
+                `;
+            } else {
+                // Otros usuarios solo ven el estado
+                return `<p>${i.profiles.full_name} - <em>${i.estado}</em></p>`;
+            }
+        }).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar intercambios:", err.message);
+        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
+    }
+}
+
+// Aceptar intercambio
+window.aceptarIntercambio = async (intercambioId, pubId) => {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .update({ estado: "aceptado" })
+            .eq("id", intercambioId);
+
+        if (error) throw error;
+        cargarIntercambios(pubId, currentUserId);
+    } catch (err) {
+        console.error("❌ Error al aceptar intercambio:", err.message);
+        alert("❌ No se pudo aceptar el intercambio.");
+    }
+};
+
+// Rechazar intercambio
+window.rechazarIntercambio = async (intercambioId, pubId) => {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .update({ estado: "rechazado" })
+            .eq("id", intercambioId);
+
+        if (error) throw error;
+        cargarIntercambios(pubId, currentUserId);
+    } catch (err) {
+        console.error("❌ Error al rechazar intercambio:", err.message);
+        alert("❌ No se pudo rechazar el intercambio.");
+    }
+};
