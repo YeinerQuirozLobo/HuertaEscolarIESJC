@@ -1,35 +1,70 @@
-console.log("✅ Cliente Supabase inicializado");
+// js/dashboard.js
+import { supabase } from "./supabaseClient.js";
 
+// 🚀 Verificar sesión al cargar
+document.addEventListener("DOMContentLoaded", async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
+    window.location.href = "index.html"; // redirige si no hay sesión
+    return;
+  }
+
+  const user = session.user;
+  console.log("Usuario autenticado ID:", user.id);
+
+  await cargarPublicaciones(user);
+});
+
+// =======================
 // 📌 Cargar publicaciones
-async function cargarPublicaciones() {
+// =======================
+async function cargarPublicaciones(user) {
   try {
-    const { data, error } = await supabase
+    const { data: publicaciones, error } = await supabase
       .from("publicaciones")
       .select(`
         id,
         producto,
         cantidad,
         unidad,
-        profiles(full_name)
+        unidad_deseada,
+        producto_deseado,
+        cantidad_deseada,
+        imagen_url,
+        create_at,
+        user_id,
+        profiles ( full_name )
       `)
       .order("create_at", { ascending: false });
 
     if (error) throw error;
 
-    const publicacionesDiv = document.getElementById("publicaciones");
-    publicacionesDiv.innerHTML = "";
+    const contenedor = document.getElementById("publicaciones-list");
+    contenedor.innerHTML = "";
 
-    data.forEach(p => {
-      publicacionesDiv.innerHTML += `
-        <div class="publicacion">
-          <h3>${p.producto}</h3>
-          <p><strong>Cantidad:</strong> ${p.cantidad} ${p.unidad}</p>
-          <p><strong>Publicado por:</strong> ${p.profiles?.full_name || "Anónimo"}</p>
-          <button onclick="toggleComentarios(${p.id})" id="btn-comentarios-${p.id}">Ver comentarios</button>
-          <div id="comentarios-${p.id}" class="comentarios" style="display: none;"></div>
-          <button onclick="eliminarPublicacion(${p.id})" class="btn-eliminar">Eliminar</button>
+    publicaciones.forEach((pub) => {
+      const div = document.createElement("div");
+      div.classList.add("publicacion");
+
+      div.innerHTML = `
+        <h3>${pub.producto} (${pub.cantidad} ${pub.unidad})</h3>
+        <p><strong>Desea:</strong> ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${pub.producto_deseado}</p>
+        <p><em>Publicado por:</em> ${pub.profiles?.full_name || "Anónimo"}</p>
+        ${pub.imagen_url ? `<img src="${pub.imagen_url}" alt="Imagen" width="200">` : ""}
+        <button onclick="solicitarIntercambio(${pub.id})">🤝 Solicitar intercambio</button>
+        <button onclick="toggleComentarios(${pub.id})" id="btn-com-${pub.id}">💬 Ver comentarios</button>
+        ${pub.user_id === user.id ? `<button onclick="eliminarPublicacion(${pub.id})">🗑 Eliminar</button>` : ""}
+        <div id="comentarios-${pub.id}" class="comentarios" style="display:none;">
+          <div id="lista-com-${pub.id}">Cargando comentarios...</div>
+          <form onsubmit="return enviarComentario(event, ${pub.id})">
+            <input type="text" id="input-com-${pub.id}" placeholder="Escribe un comentario" required>
+            <button type="submit">Enviar</button>
+          </form>
         </div>
       `;
+
+      contenedor.appendChild(div);
     });
 
   } catch (err) {
@@ -37,122 +72,128 @@ async function cargarPublicaciones() {
   }
 }
 
-// 📌 Alternar mostrar/ocultar comentarios
-async function toggleComentarios(publicacionId) {
-  const comentariosDiv = document.getElementById(`comentarios-${publicacionId}`);
-  const btn = document.getElementById(`btn-comentarios-${publicacionId}`);
+// =======================
+// 📌 Ver/Ocultar comentarios
+// =======================
+window.toggleComentarios = async function (publicacionId) {
+  const seccion = document.getElementById(`comentarios-${publicacionId}`);
+  const btn = document.getElementById(`btn-com-${publicacionId}`);
 
-  if (comentariosDiv.style.display === "none") {
+  if (seccion.style.display === "none") {
+    seccion.style.display = "block";
+    btn.textContent = "🙈 Ocultar comentarios";
     await cargarComentarios(publicacionId);
-    comentariosDiv.style.display = "block";
-    btn.textContent = "Ocultar comentarios";
   } else {
-    comentariosDiv.style.display = "none";
-    btn.textContent = "Ver comentarios";
+    seccion.style.display = "none";
+    btn.textContent = "💬 Ver comentarios";
   }
-}
+};
 
-// 📌 Cargar comentarios de una publicación
+// =======================
+// 📌 Cargar comentarios
+// =======================
 async function cargarComentarios(publicacionId) {
   try {
-    const { data, error } = await supabase
+    const { data: comentarios, error } = await supabase
       .from("comentarios")
       .select(`
         id,
         mensaje,
-        created_at,
-        profiles(full_name)
+        create_at,
+        user_id,
+        profiles!comentarios_user_id_fkey ( full_name )
       `)
       .eq("publicacion_id", publicacionId)
-      .order("created_at", { ascending: false });
+      .order("create_at", { ascending: true });
 
     if (error) throw error;
 
-    const comentariosDiv = document.getElementById(`comentarios-${publicacionId}`);
-    comentariosDiv.innerHTML = "";
+    const contenedor = document.getElementById(`lista-com-${publicacionId}`);
+    contenedor.innerHTML = "";
 
-    if (data.length === 0) {
-      comentariosDiv.innerHTML = "<p class='sin-comentarios'>No hay comentarios aún.</p>";
+    if (!comentarios || comentarios.length === 0) {
+      contenedor.innerHTML = "<p><em>Sin comentarios</em></p>";
       return;
     }
 
-    data.forEach(c => {
-      comentariosDiv.innerHTML += `
-        <div class="comentario">
-          <p><strong>${c.profiles?.full_name || "Anónimo"}:</strong> ${c.mensaje}</p>
-          <small>${new Date(c.created_at).toLocaleString()}</small>
-        </div>
-      `;
+    comentarios.forEach((com) => {
+      const p = document.createElement("p");
+      p.innerHTML = `<strong>${com.profiles?.full_name || "Anónimo"}:</strong> ${com.mensaje}`;
+      contenedor.appendChild(p);
     });
+
   } catch (err) {
     console.error("❌ Error al cargar comentarios:", err.message);
+    document.getElementById(`lista-com-${publicacionId}`).innerHTML = "<p>Error al cargar comentarios</p>";
   }
 }
 
-// 📌 Eliminar publicación
-async function eliminarPublicacion(publicacionId) {
-  if (!confirm("¿Seguro que quieres eliminar esta publicación?")) return;
+// =======================
+// 📌 Enviar comentario
+// =======================
+window.enviarComentario = async function (e, publicacionId) {
+  e.preventDefault();
+  const input = document.getElementById(`input-com-${publicacionId}`);
+  const mensaje = input.value.trim();
+  if (!mensaje) return false;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session.user;
 
   try {
-    const { error } = await supabase
-      .from("publicaciones")
-      .delete()
-      .eq("id", publicacionId);
+    const { error } = await supabase.from("comentarios").insert([
+      {
+        publicacion_id: publicacionId,
+        user_id: user.id,
+        mensaje
+      }
+    ]);
+    if (error) throw error;
 
+    input.value = "";
+    await cargarComentarios(publicacionId);
+  } catch (err) {
+    console.error("❌ Error al enviar comentario:", err.message);
+  }
+  return false;
+};
+
+// =======================
+// 📌 Solicitar intercambio
+// =======================
+window.solicitarIntercambio = async function (publicacionId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session.user;
+
+  try {
+    const { error } = await supabase.from("intercambios").insert([
+      {
+        publicacion_id: publicacionId,
+        user_id: user.id,
+        mensaje: "Quiero intercambiar este producto",
+        estado: "pendiente"
+      }
+    ]);
+    if (error) throw error;
+    alert("✅ Solicitud de intercambio enviada");
+  } catch (err) {
+    console.error("❌ Error al solicitar intercambio:", err.message);
+  }
+};
+
+// =======================
+// 📌 Eliminar publicación
+// =======================
+window.eliminarPublicacion = async function (publicacionId) {
+  if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
+
+  try {
+    const { error } = await supabase.from("publicaciones").delete().eq("id", publicacionId);
     if (error) throw error;
 
     alert("✅ Publicación eliminada");
-    cargarPublicaciones();
+    location.reload();
   } catch (err) {
     console.error("❌ Error al eliminar publicación:", err.message);
   }
-}
-
-// 📌 Cargar intercambios
-async function cargarIntercambios() {
-  try {
-    const { data, error } = await supabase
-      .from("intercambios")
-      .select(`
-        id,
-        mensaje,
-        estado,
-        created_at,
-        publicaciones(producto),
-        profiles(full_name)
-      `)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    const intercambiosDiv = document.getElementById("intercambios");
-    intercambiosDiv.innerHTML = "";
-
-    data.forEach(i => {
-      intercambiosDiv.innerHTML += `
-        <div class="intercambio">
-          <p><strong>${i.profiles?.full_name || "Anónimo"}:</strong> ${i.mensaje}</p>
-          <p><strong>Publicación:</strong> ${i.publicaciones?.producto || "N/A"}</p>
-          <p><strong>Estado:</strong> ${i.estado}</p>
-          <small>${new Date(i.created_at).toLocaleString()}</small>
-        </div>
-      `;
-    });
-  } catch (err) {
-    console.error("❌ Error al cargar intercambios:", err.message);
-  }
-}
-
-// 📌 Al cargar la página
-document.addEventListener("DOMContentLoaded", async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    window.location.href = "login.html";
-    return;
-  }
-
-  console.log("Usuario autenticado ID:", session.user.id);
-
-  cargarPublicaciones();
-  cargarIntercambios();
-});
+};
