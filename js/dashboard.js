@@ -87,10 +87,7 @@ async function cargarPublicaciones() {
     try {
         const { data, error } = await supabase
             .from("publicaciones")
-            .select(`
-                *,
-                profiles!inner(id, full_name)
-            `)
+            .select(`*, profiles!inner(id, full_name)`)
             .order("id", { ascending: false });
 
         if (error) throw error;
@@ -201,10 +198,7 @@ async function cargarComentarios(pubId) {
     try {
         const { data, error } = await supabase
             .from("comentarios")
-            .select(`
-                *,
-                profiles!inner(id, full_name)
-            `)
+            .select(`*, profiles!inner(id, full_name)`)
             .eq("publicacion_id", pubId)
             .order("id", { ascending: true });
 
@@ -261,15 +255,11 @@ window.realizarIntercambio = async (pubId) => {
     try {
         const { error } = await supabase
             .from("intercambios")
-            .insert([{
-                publicacion_id: pubId,
-                user_id: currentUserId,
-                estado: "pendiente",
-                create_at: new Date().toISOString()
-            }]);
+            .insert([{ publicacion_id: pubId, user_id: currentUserId }]);
         if (error) throw error;
 
-        cargarIntercambios(pubId);
+        // Espera 500ms antes de recargar para asegurar que Supabase registre la inserción
+        setTimeout(() => cargarIntercambios(pubId), 500);
     } catch (err) {
         console.error("❌ Error al realizar intercambio:", err.message);
         alert("❌ No se pudo solicitar el intercambio.");
@@ -279,21 +269,18 @@ window.realizarIntercambio = async (pubId) => {
 // Función para cargar intercambios
 async function cargarIntercambios(pubId) {
     const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Cargando intercambios...";
+    container.innerHTML = "Cargando solicitudes de intercambio...";
 
     try {
         const { data, error } = await supabase
             .from("intercambios")
             .select(`
                 id,
-                publicacion_id,
-                user_id,
+                mensaje,
                 estado,
-                create_at,
-                profiles!inner(id, full_name)
+                profiles (id, full_name)
             `)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
+            .eq("publicacion_id", pubId);
 
         if (error) throw error;
 
@@ -302,8 +289,8 @@ async function cargarIntercambios(pubId) {
             return;
         }
 
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + 
-            data.map(i => `<p>${i.profiles.full_name} - Estado: ${i.estado}</p>`).join("");
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
+            data.map(i => `<p>${i.profiles.full_name} - ${i.estado || 'Pendiente'}</p>`).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
