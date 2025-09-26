@@ -1,137 +1,266 @@
-// js/dashboard.js
 import { supabase } from "./supabaseClient.js";
 
-// Verificar si el usuario está autenticado
-supabase.auth.getUser().then(({ data: { user } }) => {
-  if (!user) {
-    window.location.href = "login.html"; // Redirigir si no hay usuario
-  } else {
-    console.log("Usuario autenticado ID:", user.id);
-    cargarPublicaciones();
-  }
+// Referencias a elementos del DOM
+const formPublicacion = document.getElementById("formPublicacion");
+const feedContainer = document.getElementById("feed");
+const logoutBtn = document.getElementById("logoutBtn");
+
+// Obtener sesión y usuario actual
+let currentUserId = null;
+
+document.addEventListener("DOMContentLoaded", async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    console.log("Sesión activa:", session);
+    if (!session) {
+        window.location.href = "index.html";
+        return;
+    }
+    currentUserId = session.user.id;
+    console.log("Usuario autenticado ID:", currentUserId);
+
+    await cargarPublicaciones();
 });
 
-// Función para cargar publicaciones con el perfil del usuario
-async function cargarPublicaciones() {
-  const { data, error } = await supabase
-    .from("publicaciones")
-    .select(`
-      id,
-      producto,
-      cantidad,
-      unidad,
-      unidad_deseada,
-      producto_deseado,
-      cantidad_deseada,
-      imagen_url,
-      created_at,
-      user_id,
-      profiles(full_name)
-    `)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("❌ Error al cargar publicaciones:", error.message);
-    return;
-  }
-
-  const publicacionesDiv = document.getElementById("publicaciones");
-  publicacionesDiv.innerHTML = "";
-
-  data.forEach((pub) => {
-    const pubElement = document.createElement("div");
-    pubElement.className =
-      "border p-4 mb-4 rounded-lg shadow bg-white w-full md:w-2/3";
-
-    pubElement.innerHTML = `
-      <h3 class="text-lg font-bold">${pub.producto} (${pub.cantidad} ${
-      pub.unidad
-    })</h3>
-      <p>Quiere: ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${
-      pub.producto_deseado
-    }</p>
-      <p><strong>Publicado por:</strong> ${
-        pub.profiles?.full_name || "Anónimo"
-      }</p>
-      <p class="text-sm text-gray-500">Publicado el: ${new Date(
-        pub.created_at
-      ).toLocaleString()}</p>
-      ${
-        pub.imagen_url
-          ? `<img src="${pub.imagen_url}" alt="Imagen" class="w-32 h-32 object-cover mt-2 rounded">`
-          : ""
-      }
-      <button 
-        class="toggle-comentarios bg-blue-500 text-white px-3 py-1 mt-3 rounded" 
-        data-id="${pub.id}">
-        Ver comentarios
-      </button>
-      <div id="comentarios-${pub.id}" class="mt-3 hidden"></div>
-    `;
-
-    publicacionesDiv.appendChild(pubElement);
-  });
-
-  // Asignar eventos a los botones de comentarios
-  document.querySelectorAll(".toggle-comentarios").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      const publicacionId = e.target.getAttribute("data-id");
-      const comentariosDiv = document.getElementById(
-        `comentarios-${publicacionId}`
-      );
-
-      if (comentariosDiv.classList.contains("hidden")) {
-        await cargarComentarios(publicacionId);
-        comentariosDiv.classList.remove("hidden");
-        e.target.textContent = "Ocultar comentarios";
-      } else {
-        comentariosDiv.classList.add("hidden");
-        e.target.textContent = "Ver comentarios";
-      }
+// Logout
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+        await supabase.auth.signOut();
+        window.location.href = "index.html";
     });
-  });
 }
 
-// Función para cargar comentarios de una publicación
-async function cargarComentarios(publicacionId) {
-  const { data, error } = await supabase
-    .from("comentarios")
-    .select(`
-      id,
-      mensaje,
-      created_at,
-      user_id,
-      profiles(full_name)
-    `)
-    .eq("publicacion_id", publicacionId)
-    .order("created_at", { ascending: true });
+// Manejar formulario de publicación
+if (formPublicacion) {
+    formPublicacion.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const producto = document.getElementById("producto").value;
+        const cantidad = document.getElementById("cantidad").value;
+        const unidad = document.getElementById("unidad").value;
+        const productoDeseado = document.getElementById("productoDeseado").value;
+        const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+        const unidadDeseada = document.getElementById("unidadDeseada").value;
+        const imagenFile = document.getElementById("imagen").files[0];
 
-  const comentariosDiv = document.getElementById(`comentarios-${publicacionId}`);
+        try {
+            let imagen_url = null;
+            if (imagenFile) {
+                const fileName = `${Date.now()}-${currentUserId}-${imagenFile.name}`;
+                const { data: imgData, error: imgError } = await supabase.storage
+                    .from("productos")
+                    .upload(fileName, imagenFile);
+                if (imgError) throw imgError;
 
-  if (error) {
-    console.error("❌ Error al cargar comentarios:", error.message);
-    comentariosDiv.innerHTML =
-      "<p class='text-red-500'>Error al cargar comentarios.</p>";
-    return;
-  }
+                const { data: urlData } = supabase.storage
+                    .from("productos")
+                    .getPublicUrl(imgData.path);
+                imagen_url = urlData.publicUrl;
+            }
 
-  if (!data || data.length === 0) {
-    comentariosDiv.innerHTML = "<p class='text-gray-500'>Sin comentarios.</p>";
-    return;
-  }
+            const { error } = await supabase
+                .from("publicaciones")
+                .insert([{
+                    user_id: currentUserId,
+                    producto,
+                    cantidad,
+                    unidad,
+                    imagen_url,
+                    producto_deseado: productoDeseado,
+                    cantidad_deseada: cantidadDeseada,
+                    unidad_deseada: unidadDeseada
+                }]);
+            if (error) throw error;
 
-  comentariosDiv.innerHTML = data
-    .map(
-      (c) => `
-      <div class="border-t pt-2 mt-2">
-        <p><strong>${c.profiles?.full_name || "Anónimo"}:</strong> ${
-        c.mensaje
-      }</p>
-        <p class="text-xs text-gray-400">${new Date(
-          c.created_at
-        ).toLocaleString()}</p>
-      </div>
-    `
-    )
-    .join("");
+            alert("✅ Publicación realizada con éxito");
+            formPublicacion.reset();
+            await cargarPublicaciones();
+        } catch (err) {
+            console.error("❌ Error al publicar:", err.message);
+            alert("❌ No se pudo publicar el producto.");
+        }
+    });
+}
+
+// Función para cargar publicaciones
+async function cargarPublicaciones() {
+    feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
+
+    try {
+        const { data, error } = await supabase
+            .from("publicaciones")
+            .select(`
+                *,
+                profiles!inner(id, full_name)
+            `)
+            .order("id", { ascending: false });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
+            return;
+        }
+
+        const htmlCards = data.map(pub => {
+            const authorName = pub.profiles.full_name;
+            const isOwner = pub.user_id === currentUserId;
+
+            return `
+                <div class="card mb-3 shadow">
+                    <div class="row g-0">
+                        <div class="col-md-4">
+                            <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
+                                 class="img-fluid rounded-start h-100 object-fit-cover" 
+                                 alt="Imagen de ${pub.producto}">
+                        </div>
+                        <div class="col-md-8">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">${pub.producto}</h5>
+                                <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
+                                <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
+                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
+
+                                ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
+
+                                <div class="mb-2">
+                                    <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
+                                    <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
+                                </div>
+
+                                <div class="mb-2">
+                                    <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
+                                </div>
+
+                                <div id="comentarios-${pub.id}"></div>
+                                <div id="intercambios-${pub.id}"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        feedContainer.innerHTML = htmlCards;
+
+        // Cargar comentarios y intercambios por cada publicación
+        data.forEach(pub => {
+            cargarComentarios(pub.id);
+            cargarIntercambios(pub.id);
+        });
+
+    } catch (err) {
+        console.error("❌ Error al cargar publicaciones:", err.message);
+        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
+    }
+}
+
+// Función para eliminar publicación
+window.eliminarPublicacion = async (pubId) => {
+    if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
+
+    try {
+        const { error } = await supabase
+            .from("publicaciones")
+            .delete()
+            .eq("id", pubId)
+            .eq("user_id", currentUserId);
+
+        if (error) throw error;
+        alert("✅ Publicación eliminada");
+        await cargarPublicaciones();
+    } catch (err) {
+        console.error("❌ Error al eliminar publicación:", err.message);
+        alert("❌ No se pudo eliminar la publicación.");
+    }
+};
+
+// Función para enviar comentario
+window.enviarComentario = async (pubId) => {
+    const textarea = document.getElementById(`comentario-${pubId}`);
+    const mensaje = textarea.value.trim();
+    if (!mensaje) return;
+
+    try {
+        const { error } = await supabase
+            .from("comentarios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
+        if (error) throw error;
+
+        textarea.value = "";
+        cargarComentarios(pubId);
+    } catch (err) {
+        console.error("❌ Error al enviar comentario:", err.message);
+        alert("❌ No se pudo enviar el comentario.");
+    }
+};
+
+// Función para cargar comentarios
+async function cargarComentarios(pubId) {
+    const container = document.getElementById(`comentarios-${pubId}`);
+    container.innerHTML = "Cargando comentarios...";
+
+    try {
+        const { data, error } = await supabase
+            .from("comentarios")
+            .select(`
+                *,
+                profiles!inner(id, full_name)
+            `)
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
+            return;
+        }
+
+        container.innerHTML = data.map(c => `<p><strong>${c.profiles.full_name}:</strong> ${c.mensaje}</p>`).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar comentarios:", err.message);
+        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
+    }
+}
+
+// Función para realizar intercambio
+window.realizarIntercambio = async (pubId) => {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId }]);
+        if (error) throw error;
+
+        cargarIntercambios(pubId);
+    } catch (err) {
+        console.error("❌ Error al realizar intercambio:", err.message);
+        alert("❌ No se pudo solicitar el intercambio.");
+    }
+};
+
+// Función para cargar intercambios
+async function cargarIntercambios(pubId) {
+    const container = document.getElementById(`intercambios-${pubId}`);
+    container.innerHTML = "";
+
+    try {
+        const { data, error } = await supabase
+            .from("intercambios")
+            .select(`
+                *,
+                profiles!inner(id, full_name)
+            `)
+            .eq("publicacion_id", pubId);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
+            return;
+        }
+
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + data.map(i => `<p>${i.profiles.full_name}</p>`).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar intercambios:", err.message);
+        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
+    }
 }
