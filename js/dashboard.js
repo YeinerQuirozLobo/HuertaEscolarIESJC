@@ -264,12 +264,12 @@ window.realizarIntercambio = async (pubId) => {
             .insert([{
                 publicacion_id: pubId,
                 user_id: currentUserId,
-                mensaje: "",        // 👈 vacío por ahora
-                estado: "pendiente" // 👈 importante
+                estado: "pendiente",
+                create_at: new Date().toISOString()
             }]);
         if (error) throw error;
 
-        await cargarIntercambios(pubId);
+        cargarIntercambios(pubId);
     } catch (err) {
         console.error("❌ Error al realizar intercambio:", err.message);
         alert("❌ No se pudo solicitar el intercambio.");
@@ -279,18 +279,21 @@ window.realizarIntercambio = async (pubId) => {
 // Función para cargar intercambios
 async function cargarIntercambios(pubId) {
     const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Solicitando intercambios...";
+    container.innerHTML = "Cargando intercambios...";
 
     try {
         const { data, error } = await supabase
             .from("intercambios")
             .select(`
                 id,
-                mensaje,
+                publicacion_id,
+                user_id,
                 estado,
+                create_at,
                 profiles!inner(id, full_name)
             `)
-            .eq("publicacion_id", pubId);
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
 
         if (error) throw error;
 
@@ -299,16 +302,8 @@ async function cargarIntercambios(pubId) {
             return;
         }
 
-        container.innerHTML = `
-            <p><strong>Solicitudes de intercambio:</strong></p>
-            ${data.map(i => `
-                <div class="border rounded p-2 mb-1">
-                    <p><strong>${i.profiles.full_name}</strong></p>
-                    <p class="mb-1"><em>Estado:</em> ${i.estado}</p>
-                    ${i.mensaje ? `<p class="mb-0"><em>Mensaje:</em> ${i.mensaje}</p>` : ""}
-                </div>
-            `).join("")}
-        `;
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + 
+            data.map(i => `<p>${i.profiles.full_name} - Estado: ${i.estado}</p>`).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
