@@ -261,7 +261,11 @@ window.realizarIntercambio = async (pubId) => {
     try {
         const { error } = await supabase
             .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId }]);
+            .insert([{
+                publicacion_id: pubId,
+                user_id: currentUserId,
+                estado: "pendiente"
+            }]);
         if (error) throw error;
 
         cargarIntercambios(pubId);
@@ -274,16 +278,20 @@ window.realizarIntercambio = async (pubId) => {
 // Función para cargar intercambios
 async function cargarIntercambios(pubId) {
     const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "";
+    container.innerHTML = "Cargando intercambios...";
 
     try {
         const { data, error } = await supabase
             .from("intercambios")
             .select(`
-                *,
+                id,
+                mensaje,
+                estado,
+                created_at,
                 profiles!inner(id, full_name)
             `)
-            .eq("publicacion_id", pubId);
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
 
         if (error) throw error;
 
@@ -292,7 +300,14 @@ async function cargarIntercambios(pubId) {
             return;
         }
 
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + data.map(i => `<p>${i.profiles.full_name}</p>`).join("");
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + 
+            data.map(i => `
+                <div class="border rounded p-2 mb-1">
+                    <p class="mb-1"><strong>${i.profiles.full_name}</strong></p>
+                    <p class="mb-1">Estado: <span class="badge bg-info">${i.estado}</span></p>
+                    <p class="mb-0 text-muted"><small>${new Date(i.created_at).toLocaleString()}</small></p>
+                </div>
+            `).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
