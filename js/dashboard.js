@@ -264,11 +264,12 @@ window.realizarIntercambio = async (pubId) => {
             .insert([{
                 publicacion_id: pubId,
                 user_id: currentUserId,
-                estado: "pendiente"
+                mensaje: "",        // 👈 vacío por ahora
+                estado: "pendiente" // 👈 importante
             }]);
         if (error) throw error;
 
-        cargarIntercambios(pubId);
+        await cargarIntercambios(pubId);
     } catch (err) {
         console.error("❌ Error al realizar intercambio:", err.message);
         alert("❌ No se pudo solicitar el intercambio.");
@@ -278,7 +279,7 @@ window.realizarIntercambio = async (pubId) => {
 // Función para cargar intercambios
 async function cargarIntercambios(pubId) {
     const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Cargando intercambios...";
+    container.innerHTML = "Solicitando intercambios...";
 
     try {
         const { data, error } = await supabase
@@ -287,11 +288,9 @@ async function cargarIntercambios(pubId) {
                 id,
                 mensaje,
                 estado,
-                created_at,
                 profiles!inner(id, full_name)
             `)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
+            .eq("publicacion_id", pubId);
 
         if (error) throw error;
 
@@ -300,14 +299,16 @@ async function cargarIntercambios(pubId) {
             return;
         }
 
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + 
-            data.map(i => `
+        container.innerHTML = `
+            <p><strong>Solicitudes de intercambio:</strong></p>
+            ${data.map(i => `
                 <div class="border rounded p-2 mb-1">
-                    <p class="mb-1"><strong>${i.profiles.full_name}</strong></p>
-                    <p class="mb-1">Estado: <span class="badge bg-info">${i.estado}</span></p>
-                    <p class="mb-0 text-muted"><small>${new Date(i.created_at).toLocaleString()}</small></p>
+                    <p><strong>${i.profiles.full_name}</strong></p>
+                    <p class="mb-1"><em>Estado:</em> ${i.estado}</p>
+                    ${i.mensaje ? `<p class="mb-0"><em>Mensaje:</em> ${i.mensaje}</p>` : ""}
                 </div>
-            `).join("");
+            `).join("")}
+        `;
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
