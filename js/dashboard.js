@@ -126,10 +126,9 @@ async function cargarPublicaciones() {
                                     <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
                                 </div>
 
-                                ${!isOwner ? `
-                                    <div class="mb-2">
-                                        <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
-                                    </div>` : ""}
+                                <div class="mb-2">
+                                    <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
+                                </div>
 
                                 <div id="comentarios-${pub.id}"></div>
                                 <div id="intercambios-${pub.id}"></div>
@@ -145,7 +144,7 @@ async function cargarPublicaciones() {
         // Cargar comentarios e intercambios por cada publicación
         data.forEach(pub => {
             cargarComentarios(pub.id);
-            cargarIntercambios(pub.id, pub.user_id);
+            cargarIntercambios(pub.id);
         });
 
     } catch (err) {
@@ -262,7 +261,7 @@ window.realizarIntercambio = async (pubId) => {
     try {
         const { error } = await supabase
             .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, estado: "pendiente" }]);
+            .insert([{ publicacion_id: pubId, user_id: currentUserId }]);
         if (error) throw error;
 
         cargarIntercambios(pubId);
@@ -273,7 +272,7 @@ window.realizarIntercambio = async (pubId) => {
 };
 
 // Función para cargar intercambios
-async function cargarIntercambios(pubId, pubOwnerId) {
+async function cargarIntercambios(pubId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "";
 
@@ -293,58 +292,9 @@ async function cargarIntercambios(pubId, pubOwnerId) {
             return;
         }
 
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + data.map(i => {
-            if (pubOwnerId === currentUserId) {
-                // El dueño puede aceptar o rechazar
-                return `
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span>${i.profiles.full_name} - <em>${i.estado}</em></span>
-                        ${i.estado === "pendiente" ? `
-                            <div>
-                                <button class="btn btn-sm btn-success me-1" onclick="aceptarIntercambio(${i.id}, ${pubId})">Aceptar</button>
-                                <button class="btn btn-sm btn-danger" onclick="rechazarIntercambio(${i.id}, ${pubId})">Rechazar</button>
-                            </div>` : ""}
-                    </div>
-                `;
-            } else {
-                // Otros usuarios solo ven el estado
-                return `<p>${i.profiles.full_name} - <em>${i.estado}</em></p>`;
-            }
-        }).join("");
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" + data.map(i => `<p>${i.profiles.full_name}</p>`).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
     }
 }
-
-// Aceptar intercambio
-window.aceptarIntercambio = async (intercambioId, pubId) => {
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .update({ estado: "aceptado" })
-            .eq("id", intercambioId);
-
-        if (error) throw error;
-        cargarIntercambios(pubId, currentUserId);
-    } catch (err) {
-        console.error("❌ Error al aceptar intercambio:", err.message);
-        alert("❌ No se pudo aceptar el intercambio.");
-    }
-};
-
-// Rechazar intercambio
-window.rechazarIntercambio = async (intercambioId, pubId) => {
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .update({ estado: "rechazado" })
-            .eq("id", intercambioId);
-
-        if (error) throw error;
-        cargarIntercambios(pubId, currentUserId);
-    } catch (err) {
-        console.error("❌ Error al rechazar intercambio:", err.message);
-        alert("❌ No se pudo rechazar el intercambio.");
-    }
-};
