@@ -253,13 +253,16 @@ window.eliminarComentario = async (comentarioId, pubId) => {
 // Función para realizar intercambio
 window.realizarIntercambio = async (pubId) => {
     try {
-        const { error } = await supabase
+        const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
+
+        const { data: newIntercambio, error } = await supabase
             .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId }]);
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
+            .select("id, mensaje, estado, profiles(id, full_name)");
+
         if (error) throw error;
 
-        // Espera 500ms antes de recargar para asegurar que Supabase registre la inserción
-        setTimeout(() => cargarIntercambios(pubId), 500);
+        cargarIntercambios(pubId);
     } catch (err) {
         console.error("❌ Error al realizar intercambio:", err.message);
         alert("❌ No se pudo solicitar el intercambio.");
@@ -278,9 +281,10 @@ async function cargarIntercambios(pubId) {
                 id,
                 mensaje,
                 estado,
-                profiles (id, full_name)
+                profiles(id, full_name)
             `)
-            .eq("publicacion_id", pubId);
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
 
         if (error) throw error;
 
@@ -290,7 +294,7 @@ async function cargarIntercambios(pubId) {
         }
 
         container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => `<p>${i.profiles.full_name} - ${i.estado || 'Pendiente'}</p>`).join("");
+            data.map(i => `<p>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</p>`).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
