@@ -5,16 +5,19 @@ const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Usuario actual
+// Obtener sesión y usuario actual
 let currentUserId = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
+    console.log("Sesión activa:", session);
     if (!session) {
         window.location.href = "index.html";
         return;
     }
     currentUserId = session.user.id;
+    console.log("Usuario autenticado ID:", currentUserId);
+
     await cargarPublicaciones();
 });
 
@@ -26,7 +29,7 @@ if (logoutBtn) {
     });
 }
 
-// Manejo de formulario de publicación
+// Manejar formulario de publicación
 if (formPublicacion) {
     formPublicacion.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -67,23 +70,26 @@ if (formPublicacion) {
                 }]);
             if (error) throw error;
 
+            alert("✅ Publicación realizada con éxito");
             formPublicacion.reset();
             await cargarPublicaciones();
         } catch (err) {
-            console.error("Error al publicar:", err.message);
-            alert("No se pudo publicar el producto.");
+            console.error("❌ Error al publicar:", err.message);
+            alert("❌ No se pudo publicar el producto.");
         }
     });
 }
 
-// Cargar publicaciones
+// Función para cargar publicaciones
 async function cargarPublicaciones() {
     feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
+
     try {
         const { data, error } = await supabase
             .from("publicaciones")
             .select(`*, profiles!inner(id, full_name)`)
             .order("id", { ascending: false });
+
         if (error) throw error;
 
         if (!data || data.length === 0) {
@@ -91,101 +97,111 @@ async function cargarPublicaciones() {
             return;
         }
 
-        // Leyenda visual de intercambios
-        const leyendaHTML = `
-            <div class="mb-3">
-                <span class="badge bg-warning">Pendiente</span>
-                <span class="badge bg-success">Aceptado</span>
-                <span class="badge bg-danger">Rechazado</span>
-            </div>
-        `;
-        feedContainer.innerHTML = leyendaHTML;
-
-        feedContainer.innerHTML += data.map(pub => {
+        const htmlCards = data.map(pub => {
             const authorName = pub.profiles.full_name;
             const isOwner = pub.user_id === currentUserId;
 
             return `
-            <div class="card mb-3 shadow">
-                <div class="row g-0">
-                    <div class="col-md-4">
-                        <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
-                             class="img-fluid rounded-start h-100 object-fit-cover" 
-                             alt="Imagen de ${pub.producto}">
-                    </div>
-                    <div class="col-md-8">
-                        <div class="card-body">
-                            <h5 class="card-title text-primary">${pub.producto}</h5>
-                            <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
-                            <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
-                            <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
+                <div class="card mb-3 shadow">
+                    <div class="row g-0">
+                        <div class="col-md-4">
+                            <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
+                                 class="img-fluid rounded-start h-100 object-fit-cover" 
+                                 alt="Imagen de ${pub.producto}">
+                        </div>
+                        <div class="col-md-8">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">${pub.producto}</h5>
+                                <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
+                                <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
+                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
 
-                            ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
+                                ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
 
-                            <div class="mb-2">
-                                <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
-                                <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
+                                <div class="mb-2">
+                                    <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
+                                    <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
+                                </div>
+
+                                <div class="mb-2">
+                                    <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
+                                </div>
+
+                                <div id="comentarios-${pub.id}"></div>
+                                <div id="intercambios-${pub.id}"></div>
                             </div>
-
-                            <div class="mb-2">
-                                <input type="text" id="mensajeIntercambio-${pub.id}" class="form-control mb-1" placeholder="Mensaje opcional">
-                                <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
-                            </div>
-
-                            <div id="comentarios-${pub.id}"></div>
-                            <div id="intercambios-${pub.id}"></div>
                         </div>
                     </div>
                 </div>
-            </div>`;
+            `;
         }).join("");
 
+        feedContainer.innerHTML = htmlCards;
+
+        // Cargar comentarios e intercambios por cada publicación
         data.forEach(pub => {
             cargarComentarios(pub.id);
-            cargarIntercambios(pub.id, pub.user_id); // <-- pasar ownerId
+            cargarIntercambios(pub.id);
         });
+
     } catch (err) {
-        console.error("Error al cargar publicaciones:", err.message);
+        console.error("❌ Error al cargar publicaciones:", err.message);
         feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
     }
 }
 
-// Funciones de publicaciones
+// Función para eliminar publicación
 window.eliminarPublicacion = async (pubId) => {
     if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
+
     try {
-        const { error } = await supabase.from("publicaciones").delete()
-            .eq("id", pubId).eq("user_id", currentUserId);
+        const { error } = await supabase
+            .from("publicaciones")
+            .delete()
+            .eq("id", pubId)
+            .eq("user_id", currentUserId);
+
         if (error) throw error;
+        alert("✅ Publicación eliminada");
         await cargarPublicaciones();
     } catch (err) {
-        console.error(err.message);
-        alert("No se pudo eliminar la publicación.");
+        console.error("❌ Error al eliminar publicación:", err.message);
+        alert("❌ No se pudo eliminar la publicación.");
     }
 };
 
-// Funciones de comentarios
+// Función para enviar comentario
 window.enviarComentario = async (pubId) => {
-    const mensaje = document.getElementById(`comentario-${pubId}`).value.trim();
+    const textarea = document.getElementById(`comentario-${pubId}`);
+    const mensaje = textarea.value.trim();
     if (!mensaje) return;
+
     try {
-        const { error } = await supabase.from("comentarios").insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
+        const { error } = await supabase
+            .from("comentarios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
         if (error) throw error;
-        document.getElementById(`comentario-${pubId}`).value = "";
+
+        textarea.value = "";
         cargarComentarios(pubId);
     } catch (err) {
-        console.error(err.message);
-        alert("No se pudo enviar el comentario.");
+        console.error("❌ Error al enviar comentario:", err.message);
+        alert("❌ No se pudo enviar el comentario.");
     }
 };
 
+// Función para cargar comentarios
 async function cargarComentarios(pubId) {
     const container = document.getElementById(`comentarios-${pubId}`);
     container.innerHTML = "Cargando comentarios...";
+
     try {
-        const { data, error } = await supabase.from("comentarios")
-            .select("*, profiles!inner(id, full_name)")
-            .eq("publicacion_id", pubId).order("id", { ascending: true });
+        const { data, error } = await supabase
+            .from("comentarios")
+            .select(`*, profiles!inner(id, full_name)`)
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
+
         if (error) throw error;
 
         if (!data || data.length === 0) {
@@ -193,34 +209,94 @@ async function cargarComentarios(pubId) {
             return;
         }
 
-        container.innerHTML = data.map(c => `
-            <div class="d-flex justify-content-between align-items-center mb-1">
-                <p class="mb-0"><strong>${c.profiles.full_name}:</strong> ${c.mensaje}</p>
-                ${c.user_id === currentUserId ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">🗑️</button>` : ""}
-            </div>
-        `).join("");
+        container.innerHTML = data.map(c => {
+            const isCommentOwner = c.user_id === currentUserId;
+            return `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <p class="mb-0">
+                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
+                    </p>
+                    ${isCommentOwner ? `
+                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
+                            🗑️
+                        </button>` : ""}
+                </div>
+            `;
+        }).join("");
     } catch (err) {
-        console.error(err.message);
+        console.error("❌ Error al cargar comentarios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
     }
 }
 
+// Función para eliminar comentario
 window.eliminarComentario = async (comentarioId, pubId) => {
     if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
+
     try {
-        const { error } = await supabase.from("comentarios").delete()
-            .eq("id", comentarioId).eq("user_id", currentUserId);
+        const { error } = await supabase
+            .from("comentarios")
+            .delete()
+            .eq("id", comentarioId)
+            .eq("user_id", currentUserId);
+
         if (error) throw error;
+
+        alert("✅ Comentario eliminado");
         cargarComentarios(pubId);
     } catch (err) {
-        console.error(err.message);
-        alert("No se pudo eliminar el comentario.");
+        console.error("❌ Error al eliminar comentario:", err.message);
+        alert("❌ No se pudo eliminar el comentario.");
     }
 };
 
-// Funciones de intercambios
+// Función para realizar intercambio
 window.realizarIntercambio = async (pubId) => {
-    const mensaje = document.getElementById(`mensajeIntercambio-${pubId}`).value.trim();
     try {
-        const { error } = await supabase.from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id:
+        const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
+
+        const { data: newIntercambio, error } = await supabase
+            .from("intercambios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
+            .select("id, mensaje, estado, profiles(id, full_name)");
+
+        if (error) throw error;
+
+        cargarIntercambios(pubId);
+    } catch (err) {
+        console.error("❌ Error al realizar intercambio:", err.message);
+        alert("❌ No se pudo solicitar el intercambio.");
+    }
+};
+
+// Función para cargar intercambios
+async function cargarIntercambios(pubId) {
+    const container = document.getElementById(`intercambios-${pubId}`);
+    container.innerHTML = "Cargando solicitudes de intercambio...";
+
+    try {
+        const { data, error } = await supabase
+            .from("intercambios")
+            .select(`
+                id,
+                mensaje,
+                estado,
+                profiles(id, full_name)
+            `)
+            .eq("publicacion_id", pubId)
+            .order("id", { ascending: true });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
+            return;
+        }
+
+        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
+            data.map(i => `<p>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</p>`).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar intercambios:", err.message);
+        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
+    }
+}
