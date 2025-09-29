@@ -11,7 +11,12 @@
 
 /* Estilos generales y tipografía */
 body {
-    background: linear-gradient(135deg, #f8f9fa, #ffffff);
+    background: linear-gradient(
+        rgba(33, 37, 41, 0.6), 
+        rgba(33, 37, 41, 0.6)
+      ), 
+      url("prueba.jpeg") no-repeat center center fixed;
+    background-size: cover;
     color: var(--color-negro);
     font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
