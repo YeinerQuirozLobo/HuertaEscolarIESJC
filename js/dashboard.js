@@ -5,6 +5,11 @@ const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
+// Variables globales para el modal de intercambio
+let selectedIntercambioId = null;
+let selectedNuevoEstado = null;
+let selectedPubId = null;
+
 // Obtener sesión y usuario actual
 let currentUserId = null;
 
@@ -269,7 +274,7 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios (ahora con botones para el dueño)
+// Función para cargar intercambios (ahora con botones y modal)
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
@@ -300,8 +305,8 @@ async function cargarIntercambios(pubId, ownerId) {
                     <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
                     ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
                         <div>
-                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                            <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+                            <button class="btn btn-sm btn-success" onclick="abrirModalIntercambio(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
+                            <button class="btn btn-sm btn-danger" onclick="abrirModalIntercambio(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
                         </div>
                     ` : ""}
                 </div>
@@ -312,20 +317,35 @@ async function cargarIntercambios(pubId, ownerId) {
     }
 }
 
-// Función para actualizar estado de intercambio
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
+// Abrir modal de confirmación
+window.abrirModalIntercambio = (intercambioId, nuevoEstado, pubId) => {
+    selectedIntercambioId = intercambioId;
+    selectedNuevoEstado = nuevoEstado;
+    selectedPubId = pubId;
+
+    const modal = new bootstrap.Modal(document.getElementById("modalIntercambio"));
+    modal.show();
+};
+
+// Confirmar acción desde el modal
+window.confirmarCambioEstado = async () => {
+    if (!selectedIntercambioId || !selectedNuevoEstado || !selectedPubId) return;
+
     try {
         const { error } = await supabase
             .from("intercambios")
-            .update({ estado: nuevoEstado })
-            .eq("id", intercambioId);
+            .update({ estado: selectedNuevoEstado })
+            .eq("id", selectedIntercambioId);
 
         if (error) throw error;
 
-        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
-        cargarIntercambios(pubId, currentUserId);
+        alert(`✅ Solicitud ${selectedNuevoEstado.toLowerCase()}`);
+        cargarIntercambios(selectedPubId, currentUserId);
     } catch (err) {
         console.error("❌ Error al actualizar estado:", err.message);
         alert("❌ No se pudo actualizar la solicitud.");
     }
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById("modalIntercambio"));
+    modal.hide();
 };
