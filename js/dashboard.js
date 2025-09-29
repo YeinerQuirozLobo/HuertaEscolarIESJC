@@ -1,208 +1,359 @@
+// dashboard.js
 import { supabase } from "./supabaseClient.js";
 
-// Referencias a elementos del DOM
+// Referencias del DOM
 const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
-const chatContainer = document.getElementById("chatContainer");
-const chatBox = document.getElementById("chatBox");
-const chatMessages = document.getElementById("chatMessages");
-const chatInput = document.getElementById("chatInput");
-const sendMessageBtn = document.getElementById("sendMessageBtn");
 
-let usuarioId = null;
-let chatActivo = null;
+// =============================
+// Autenticación
+// =============================
+let currentUser = null;
 
-// ====================== AUTENTICACIÓN ======================
-supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session) {
-    console.log("Sesión activa:", session);
-    usuarioId = session.user.id;
-    console.log("Usuario autenticado ID:", usuarioId);
-    cargarFeed();
-  } else {
-    window.location.href = "index.html"; // Redirige si no hay sesión
-  }
+supabase.auth.getSession().then(({ data }) => {
+    if (data.session) {
+        currentUser = data.session.user;
+        console.log("Sesión activa:", data.session);
+        console.log("Usuario autenticado ID:", currentUser.id);
+        cargarPublicaciones();
+    } else {
+        window.location.href = "index.html";
+    }
 });
 
 logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  window.location.href = "index.html";
+    await supabase.auth.signOut();
+    window.location.href = "index.html";
 });
 
-// ====================== PUBLICAR ======================
-if (formPublicacion) {
-  formPublicacion.addEventListener("submit", async (e) => {
+// =============================
+// Crear publicación
+// =============================
+formPublicacion.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const contenido = document.getElementById("contenido").value;
 
-    if (!contenido.trim()) return;
+    const producto = document.getElementById("producto").value;
+    const cantidad = document.getElementById("cantidad").value;
+    const unidad = document.getElementById("unidad").value;
+    const productoDeseado = document.getElementById("productoDeseado").value;
+    const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+    const unidadDeseada = document.getElementById("unidadDeseada").value;
+    const imagenFile = document.getElementById("imagen").files[0];
 
-    const { error } = await supabase
-      .from("publicaciones")
-      .insert([{ contenido, usuario_id: usuarioId }]);
+    let imagenUrl = null;
+
+    if (imagenFile) {
+        const { data, error } = await supabase.storage
+            .from("imagenes")
+            .upload(`publicaciones/${Date.now()}-${imagenFile.name}`, imagenFile);
+
+        if (error) {
+            console.error("Error subiendo imagen:", error.message);
+        } else {
+            const { data: publicURL } = supabase.storage
+                .from("imagenes")
+                .getPublicUrl(data.path);
+            imagenUrl = publicURL.publicUrl;
+        }
+    }
+
+    const { error } = await supabase.from("publicaciones").insert([
+        {
+            producto,
+            cantidad,
+            unidad,
+            producto_deseado: productoDeseado,
+            cantidad_deseada: cantidadDeseada,
+            unidad_deseada: unidadDeseada,
+            imagen_url: imagenUrl,
+            user_id: currentUser.id,
+        },
+    ]);
 
     if (error) {
-      console.error("Error al publicar:", error);
+        console.error("Error creando publicación:", error.message);
     } else {
-      formPublicacion.reset();
-      cargarFeed();
+        formPublicacion.reset();
+        cargarPublicaciones();
     }
-  });
+});
+
+// =============================
+// Cargar publicaciones
+// =============================
+async function cargarPublicaciones() {
+    feedContainer.innerHTML = "";
+
+    const { data: publicaciones, error } = await supabase
+        .from("publicaciones")
+        .select("*, profiles(full_name)")
+        .order("id", { ascending: false });
+
+    if (error) {
+        console.error("Error cargando publicaciones:", error.message);
+        return;
+    }
+
+    publicaciones.forEach((pub) => {
+        const card = document.createElement("div");
+        card.classList.add("card", "mb-4", "shadow");
+
+        card.innerHTML = `
+            <div class="card-body">
+                <h5 class="card-title">${pub.producto} - ${pub.cantidad} ${pub.unidad}</h5>
+                <p class="card-text"><strong>Desea a cambio:</strong> ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${pub.producto_deseado}</p>
+                ${
+                    pub.imagen_url
+                        ? `<img src="${pub.imagen_url}" class="img-fluid mb-2" alt="Imagen">`
+                        : ""
+                }
+                <p><small>Publicado por: ${pub.profiles?.full_name || "Anónimo"}</small></p>
+
+                ${
+                    pub.user_id !== currentUser.id
+                        ? `
+                    <textarea class="form-control mb-2" placeholder="Escribe tu propuesta de intercambio"></textarea>
+                    <button class="btn btn-primary btn-sm" onclick="solicitarIntercambio(${pub.id}, this)">Solicitar intercambio</button>
+                `
+                        : `<div id="intercambios-${pub.id}" class="mt-3"></div>`
+                }
+            </div>
+            <div class="card-footer">
+                <h6>Comentarios</h6>
+                <div id="comentarios-${pub.id}" class="mb-2"></div>
+                <textarea class="form-control mb-2" placeholder="Escribe un comentario"></textarea>
+                <button class="btn btn-secondary btn-sm" onclick="enviarComentario(${pub.id}, this)">Comentar</button>
+            </div>
+        `;
+
+        feedContainer.appendChild(card);
+
+        if (pub.user_id === currentUser.id) {
+            cargarSolicitudes(pub.id);
+        }
+        cargarComentarios(pub.id);
+    });
 }
 
-// ====================== FEED ======================
-async function cargarFeed() {
-  const { data, error } = await supabase
-    .from("publicaciones")
-    .select("id, contenido, usuario_id, created_at")
-    .order("created_at", { ascending: false });
+// =============================
+// Intercambios
+// =============================
+window.solicitarIntercambio = async function (publicacionId, btn) {
+    const mensaje = btn.previousElementSibling.value;
 
-  if (error) {
-    console.error("Error cargando publicaciones:", error);
-    return;
-  }
+    const { error } = await supabase.from("intercambios").insert([
+        {
+            publicacion_id: publicacionId,
+            user_id: currentUser.id,
+            mensaje,
+            estado: "Pendiente",
+        },
+    ]);
 
-  feedContainer.innerHTML = "";
-
-  data.forEach((pub) => {
-    const div = document.createElement("div");
-    div.className = "card mb-2 p-2";
-
-    div.innerHTML = `
-      <p>${pub.contenido}</p>
-      <button class="btn btn-sm btn-primary" onclick="solicitarIntercambio('${pub.id}', '${pub.usuario_id}')">Solicitar intercambio</button>
-      <button class="btn btn-sm btn-success" onclick="abrirChat('${pub.usuario_id}', '${pub.id}')">Abrir Chat</button>
-      <div id="solicitudes-${pub.id}" class="mt-2"></div>
-    `;
-
-    feedContainer.appendChild(div);
-
-    cargarSolicitudes(pub.id);
-  });
-}
-
-// ====================== SOLICITUDES ======================
-async function solicitarIntercambio(publicacionId, propietarioId) {
-  if (propietarioId === usuarioId) {
-    alert("No puedes solicitar intercambio a tu propia publicación.");
-    return;
-  }
-
-  const { error } = await supabase.from("intercambios").insert([
-    {
-      publicacion_id: publicacionId,
-      solicitante_id: usuarioId,
-      propietario_id: propietarioId,
-      estado: "pendiente",
-    },
-  ]);
-
-  if (error) {
-    console.error("Error al solicitar intercambio:", error);
-  } else {
-    alert("Solicitud enviada");
-    cargarSolicitudes(publicacionId);
-  }
-}
-
-async function cargarSolicitudes(publicacionId) {
-  const { data, error } = await supabase
-    .from("intercambios")
-    .select("id, solicitante_id, estado")
-    .eq("publicacion_id", publicacionId);
-
-  if (error) {
-    console.error("Error al cargar solicitudes:", error);
-    return;
-  }
-
-  const contenedor = document.getElementById(`solicitudes-${publicacionId}`);
-  if (!contenedor) return;
-
-  if (data.length === 0) {
-    contenedor.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
-    return;
-  }
-
-  contenedor.innerHTML = data
-    .map(
-      (s) => `
-      <div class="d-flex justify-content-between align-items-center border p-1 mb-1">
-        <span>Solicitante: ${s.solicitante_id}</span>
-        <span class="badge bg-info">${s.estado}</span>
-      </div>
-    `
-    )
-    .join("");
-}
-
-// ====================== CHAT ======================
-window.abrirChat = async function (otroUsuarioId, publicacionId) {
-  if (!chatContainer || !chatBox) {
-    console.error("❌ El contenedor de chat no existe en el HTML.");
-    return;
-  }
-
-  chatActivo = { otroUsuarioId, publicacionId };
-  chatContainer.style.display = "block";
-  chatBox.style.display = "block";
-
-  cargarMensajes();
-
-  if (sendMessageBtn) {
-    sendMessageBtn.onclick = enviarMensaje;
-  }
+    if (error) {
+        console.error("Error creando intercambio:", error.message);
+    } else {
+        alert("Solicitud enviada.");
+        btn.previousElementSibling.value = "";
+    }
 };
 
-async function cargarMensajes() {
-  if (!chatActivo) return;
+async function cargarSolicitudes(publicacionId) {
+    const contenedor = document.getElementById(`intercambios-${publicacionId}`);
+    contenedor.innerHTML = "";
 
-  const { data, error } = await supabase
-    .from("chats")
-    .select("id, emisor_id, receptor_id, mensaje, created_at")
-    .or(
-      `and(emisor_id.eq.${usuarioId},receptor_id.eq.${chatActivo.otroUsuarioId}),and(emisor_id.eq.${chatActivo.otroUsuarioId},receptor_id.eq.${usuarioId})`
-    )
-    .eq("publicacion_id", chatActivo.publicacionId)
-    .order("created_at", { ascending: true });
+    const { data: intercambios, error } = await supabase
+        .from("intercambios")
+        .select("*, profiles(full_name)")
+        .eq("publicacion_id", publicacionId);
 
-  if (error) {
-    console.error("Error al cargar mensajes:", error);
-    return;
-  }
+    if (error) {
+        console.error("Error cargando intercambios:", error.message);
+        return;
+    }
 
-  chatMessages.innerHTML = "";
+    intercambios.forEach((int) => {
+        const div = document.createElement("div");
+        div.classList.add("border", "p-2", "mb-2");
 
-  data.forEach((msg) => {
-    const p = document.createElement("p");
-    p.className = msg.emisor_id === usuarioId ? "text-end text-primary" : "text-start text-dark";
-    p.textContent = msg.mensaje;
-    chatMessages.appendChild(p);
-  });
-
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+        div.innerHTML = `
+            <p><strong>${int.profiles?.full_name || "Anon"}:</strong> ${int.mensaje}</p>
+            <p><small>Estado: ${int.estado}</small></p>
+            ${
+                int.estado === "Pendiente"
+                    ? `
+                <button class="btn btn-success btn-sm" onclick="responderIntercambio(${int.id}, 'Aceptado')">Aceptar</button>
+                <button class="btn btn-danger btn-sm" onclick="responderIntercambio(${int.id}, 'Rechazado')">Rechazar</button>
+            `
+                    : int.estado === "Aceptado"
+                    ? `<button class="btn btn-info btn-sm" onclick="abrirChat(${int.id})">Abrir Chat</button>`
+                    : ""
+            }
+        `;
+        contenedor.appendChild(div);
+    });
 }
 
-async function enviarMensaje() {
-  if (!chatActivo) return;
-  const mensaje = chatInput.value.trim();
-  if (!mensaje) return;
+window.responderIntercambio = async function (id, estado) {
+    const { error } = await supabase
+        .from("intercambios")
+        .update({ estado })
+        .eq("id", id);
 
-  const { error } = await supabase.from("chats").insert([
-    {
-      emisor_id: usuarioId,
-      receptor_id: chatActivo.otroUsuarioId,
-      mensaje,
-      publicacion_id: chatActivo.publicacionId,
-    },
-  ]);
+    if (error) {
+        console.error("Error actualizando intercambio:", error.message);
+    } else {
+        alert(`Intercambio ${estado}`);
+        cargarPublicaciones();
 
-  if (error) {
-    console.error("Error al enviar mensaje:", error);
-    return;
-  }
+        if (estado === "Aceptado") {
+            // Crear un chat si no existe
+            const { data: chat } = await supabase
+                .from("chats")
+                .select("*")
+                .eq("intercambio_id", id)
+                .maybeSingle();
 
-  chatInput.value = "";
-  cargarMensajes();
+            if (!chat) {
+                await supabase.from("chats").insert([{ intercambio_id: id }]);
+            }
+        }
+    }
+};
+
+// =============================
+// Comentarios
+// =============================
+window.enviarComentario = async function (publicacionId, btn) {
+    const mensaje = btn.previousElementSibling.value;
+
+    const { error } = await supabase.from("comentarios").insert([
+        {
+            publicacion_id: publicacionId,
+            user_id: currentUser.id,
+            mensaje,
+        },
+    ]);
+
+    if (error) {
+        console.error("Error creando comentario:", error.message);
+    } else {
+        btn.previousElementSibling.value = "";
+        cargarComentarios(publicacionId);
+    }
+};
+
+async function cargarComentarios(publicacionId) {
+    const contenedor = document.getElementById(`comentarios-${publicacionId}`);
+    contenedor.innerHTML = "";
+
+    const { data: comentarios, error } = await supabase
+        .from("comentarios")
+        .select("*, profiles(full_name)")
+        .eq("publicacion_id", publicacionId);
+
+    if (error) {
+        console.error("Error cargando comentarios:", error.message);
+        return;
+    }
+
+    comentarios.forEach((c) => {
+        const div = document.createElement("div");
+        div.classList.add("border", "p-1", "mb-1");
+        div.innerHTML = `<strong>${c.profiles?.full_name || "Anon"}:</strong> ${c.mensaje}`;
+        contenedor.appendChild(div);
+    });
 }
+
+// =============================
+// CHAT
+// =============================
+let chatActualId = null;
+
+window.abrirChat = async function (intercambioId) {
+    // Buscar o crear chat
+    let { data: chat } = await supabase
+        .from("chats")
+        .select("*")
+        .eq("intercambio_id", intercambioId)
+        .maybeSingle();
+
+    if (!chat) {
+        const { data: nuevo } = await supabase
+            .from("chats")
+            .insert([{ intercambio_id: intercambioId }])
+            .select()
+            .single();
+        chat = nuevo;
+    }
+
+    chatActualId = chat.id;
+    document.getElementById("chatModal").style.display = "block";
+    cargarMensajes(chatActualId);
+    escucharMensajes(chatActualId);
+};
+
+async function cargarMensajes(chatId) {
+    const contenedor = document.getElementById("chatMessages");
+    contenedor.innerHTML = "";
+
+    const { data: mensajes, error } = await supabase
+        .from("mensajes")
+        .select("*")
+        .eq("chat_id", chatId)
+        .order("created_at", { ascending: true });
+
+    if (error) {
+        console.error("Error cargando mensajes:", error.message);
+        return;
+    }
+
+    mensajes.forEach((m) => {
+        const div = document.createElement("div");
+        div.textContent = `${m.remitente}: ${m.contenido}`;
+        contenedor.appendChild(div);
+    });
+}
+
+function escucharMensajes(chatId) {
+    supabase
+        .channel("mensajes")
+        .on(
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "mensajes", filter: `chat_id=eq.${chatId}` },
+            (payload) => {
+                const m = payload.new;
+                const contenedor = document.getElementById("chatMessages");
+                const div = document.createElement("div");
+                div.textContent = `${m.remitente}: ${m.contenido}`;
+                contenedor.appendChild(div);
+            }
+        )
+        .subscribe();
+}
+
+document.getElementById("sendMessageBtn")?.addEventListener("click", async () => {
+    const input = document.getElementById("chatInput");
+    const contenido = input.value.trim();
+    if (!contenido || !chatActualId) return;
+
+    const { error } = await supabase.from("mensajes").insert([
+        {
+            chat_id: chatActualId,
+            remitente: currentUser.id,
+            contenido,
+        },
+    ]);
+
+    if (error) {
+        console.error("Error enviando mensaje:", error.message);
+    } else {
+        input.value = "";
+    }
+});
+
+window.cerrarChat = function () {
+    document.getElementById("chatModal").style.display = "none";
+    chatActualId = null;
+};
