@@ -1,103 +1,71 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Huerta Escolar - Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Huerta Escolar - Dashboard</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="bg-light">
-
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="#">Huerta Escolar</a>
-        <div class="collapse navbar-collapse">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item">
-                    <button class="btn btn-outline-light" id="logoutBtn">Cerrar Sesión</button>
-                </li>
-            </ul>
-        </div>
+  <!-- Barra de navegación -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-success px-3">
+    <a class="navbar-brand" href="#">🌱 Huerta Escolar</a>
+    <div class="ms-auto">
+      <button id="logoutBtn" class="btn btn-outline-light btn-sm">Cerrar sesión</button>
     </div>
-</nav>
+  </nav>
 
-<div class="container mt-4">
-    <h1 class="text-center mb-4">Bienvenido a la Huerta Escolar</h1>
-    <div class="row">
-        <div class="col-md-4">
-            <div class="card shadow p-3 mb-4">
-                <h4 class="mb-3">Publica tu Producto</h4>
-                <form id="formPublicacion">
-                    <div class="mb-3">
-                        <label for="producto" class="form-label">Producto</label>
-                        <input type="text" class="form-control" id="producto" required>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label for="cantidad" class="form-label">Cantidad</label>
-                            <input type="number" class="form-control" id="cantidad" required>
-                        </div>
-                        <div class="col-6">
-                            <label for="unidad" class="form-label">Unidad</label>
-                            <input type="text" class="form-control" id="unidad" placeholder="ej. kg, unidad, libra" required>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="imagen" class="form-label">Imagen del producto</label>
-                        <input class="form-control" type="file" id="imagen" accept="image/*" required>
-                    </div>
-                    <hr>
-                    <h5 class="mb-3">Deseo a cambio:</h5>
-                    <div class="mb-3">
-                        <label for="productoDeseado" class="form-label">Producto Deseado</label>
-                        <input type="text" class="form-control" id="productoDeseado" required>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label for="cantidadDeseada" class="form-label">Cantidad Deseada</label>
-                            <input type="number" class="form-control" id="cantidadDeseada" required>
-                        </div>
-                        <div class="col-6">
-                            <label for="unidadDeseada" class="form-label">Unidad Deseada</label>
-                            <input type="text" class="form-control" id="unidadDeseada" placeholder="ej. kg, unidad, libra" required>
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Publicar</button>
-                </form>
-            </div>
+  <!-- Contenido principal -->
+  <div class="container my-4">
+    <h2 class="mb-4">Bienvenido al Dashboard</h2>
+
+    <!-- Formulario para nueva publicación -->
+    <div class="card p-3 mb-4">
+      <h5 class="card-title">Nueva publicación</h5>
+      <form id="formPublicacion">
+        <div class="mb-3">
+          <textarea
+            id="contenido"
+            class="form-control"
+            placeholder="Escribe tu publicación..."
+            required
+          ></textarea>
         </div>
-        <div class="col-md-8">
-            <div id="feed">
-                <!-- Aquí tu JS insertará dinámicamente las publicaciones -->
-            </div>
-        </div>
+        <button type="submit" class="btn btn-success">Publicar</button>
+      </form>
     </div>
-</div>
 
-<!-- Modal de Chat -->
-<div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="chatModalLabel">Chat del Intercambio</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-      <div class="modal-body">
-        <div id="chatMessages" class="border p-2 mb-2" style="height: 300px; overflow-y: auto; background: #f8f9fa;">
-          <!-- Los mensajes se cargarán aquí -->
+    <!-- Feed de publicaciones -->
+    <div id="feed" class="mb-5"></div>
+
+    <!-- Contenedor del chat -->
+    <div id="chatContainer" style="display:none;">
+      <div class="card shadow-lg" id="chatBox" style="display:none;">
+        <div class="card-header bg-success text-white">
+          <h5 class="mb-0">💬 Chat</h5>
         </div>
-        <div class="input-group">
-          <input type="text" id="chatInput" class="form-control" placeholder="Escribe un mensaje...">
-          <button class="btn btn-primary" id="sendMessageBtn">Enviar</button>
+        <div class="card-body" id="chatMessages" style="height: 300px; overflow-y: auto;">
+          <!-- Aquí se cargan los mensajes -->
+        </div>
+        <div class="card-footer d-flex">
+          <input
+            type="text"
+            id="chatInput"
+            class="form-control me-2"
+            placeholder="Escribe un mensaje..."
+          />
+          <button id="sendMessageBtn" class="btn btn-success">Enviar</button>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Bootstrap Bundle (con Popper incluido para modal) -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="js/dashboard.js" type="module"></script>
+  <!-- Scripts -->
+  <script type="module" src="supabaseClient.js"></script>
+  <script type="module" src="dashboard.js"></script>
 </body>
 </html>
