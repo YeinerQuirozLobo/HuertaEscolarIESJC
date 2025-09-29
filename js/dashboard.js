@@ -5,15 +5,16 @@ const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// (Chat) referencias
-const chatContainerEl = document.getElementById("chatContainer"); // contenedor del chat (card)
-const chatMensajesEl = document.getElementById("chatMensajes");   // div donde mostramos mensajes
+// Chat (modal + mensajes)
+const chatModalEl = document.getElementById("chatModal");
+const chatMensajesEl = document.getElementById("chatMensajes");
 const formChat = document.getElementById("formChat");
 const chatInput = document.getElementById("chatInput");
 
-// Obtener sesión y usuario actual
 let currentUserId = null;
+let chatActualId = null;
 
+// ======================= SESIÓN ==========================
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
     console.log("Sesión activa:", session);
@@ -27,7 +28,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     await cargarPublicaciones();
 });
 
-// Logout
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
         await supabase.auth.signOut();
@@ -35,7 +35,7 @@ if (logoutBtn) {
     });
 }
 
-// Manejar formulario de publicación
+// ======================= PUBLICAR ==========================
 if (formPublicacion) {
     formPublicacion.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -86,7 +86,7 @@ if (formPublicacion) {
     });
 }
 
-// Función para cargar publicaciones
+// ======================= PUBLICACIONES ==========================
 async function cargarPublicaciones() {
     feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
 
@@ -144,7 +144,7 @@ async function cargarPublicaciones() {
 
         feedContainer.innerHTML = htmlCards;
 
-        // Cargar comentarios e intercambios por cada publicación
+        // Cargar comentarios e intercambios
         data.forEach(pub => {
             cargarComentarios(pub.id);
             cargarIntercambios(pub.id, pub.user_id);
@@ -156,367 +156,187 @@ async function cargarPublicaciones() {
     }
 }
 
-// Función para eliminar publicación
-window.eliminarPublicacion = async (pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("publicaciones")
-            .delete()
-            .eq("id", pubId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-        alert("✅ Publicación eliminada");
-        await cargarPublicaciones();
-    } catch (err) {
-        console.error("❌ Error al eliminar publicación:", err.message);
-        alert("❌ No se pudo eliminar la publicación.");
-    }
-};
-
-// Función para enviar comentario
-window.enviarComentario = async (pubId) => {
-    const textarea = document.getElementById(`comentario-${pubId}`);
+// ======================= COMENTARIOS ==========================
+async function enviarComentario(publicacionId) {
+    const textarea = document.getElementById(`comentario-${publicacionId}`);
     const mensaje = textarea.value.trim();
     if (!mensaje) return;
 
     try {
         const { error } = await supabase
             .from("comentarios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
+            .insert([{
+                publicacion_id: publicacionId,
+                user_id: currentUserId,
+                mensaje
+            }]);
         if (error) throw error;
 
         textarea.value = "";
-        cargarComentarios(pubId);
+        cargarComentarios(publicacionId);
     } catch (err) {
         console.error("❌ Error al enviar comentario:", err.message);
-        alert("❌ No se pudo enviar el comentario.");
     }
-};
+}
 
-// Función para cargar comentarios
-async function cargarComentarios(pubId) {
-    const container = document.getElementById(`comentarios-${pubId}`);
-    container.innerHTML = "Cargando comentarios...";
-
+async function cargarComentarios(publicacionId) {
+    const comentariosEl = document.getElementById(`comentarios-${publicacionId}`);
     try {
         const { data, error } = await supabase
             .from("comentarios")
-            .select(`*, profiles!inner(id, full_name)`)
-            .eq("publicacion_id", pubId)
+            .select("*, profiles!inner(id, full_name)")
+            .eq("publicacion_id", publicacionId)
             .order("id", { ascending: true });
 
         if (error) throw error;
 
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
-            return;
-        }
-
-        container.innerHTML = data.map(c => {
-            const isCommentOwner = c.user_id === currentUserId;
-            return `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <p class="mb-0">
-                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
-                    </p>
-                    ${isCommentOwner ? `
-                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
-                            🗑️
-                        </button>` : ""}
-                </div>
-            `;
-        }).join("");
+        comentariosEl.innerHTML = data.map(c => `
+            <p><strong>${c.profiles.full_name}:</strong> ${c.mensaje}</p>
+        `).join("");
     } catch (err) {
         console.error("❌ Error al cargar comentarios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
     }
 }
 
-// Función para eliminar comentario
-window.eliminarComentario = async (comentarioId, pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
+// ======================= INTERCAMBIOS ==========================
+async function realizarIntercambio(publicacionId) {
+    const mensaje = prompt("Escribe tu propuesta de intercambio:");
+    if (!mensaje) return;
 
     try {
         const { error } = await supabase
-            .from("comentarios")
-            .delete()
-            .eq("id", comentarioId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-
-        alert("✅ Comentario eliminado");
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al eliminar comentario:", err.message);
-        alert("❌ No se pudo eliminar el comentario.");
-    }
-};
-
-// Función para realizar intercambio
-window.realizarIntercambio = async (pubId) => {
-    try {
-        const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
-
-        const { data: newIntercambio, error } = await supabase
             .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
-            .select("id, mensaje, estado, profiles(id, full_name)");
-
-        if (error) throw error;
-
-        cargarIntercambios(pubId);
-    } catch (err) {
-        console.error("❌ Error al realizar intercambio:", err.message);
-        alert("❌ No se pudo solicitar el intercambio.");
-    }
-};
-
-/*
-  Nota importante sobre visibilidad de intercambios:
-  - Queremos que el DUEÑO de la publicación vea todas las solicitudes de su publicación.
-  - Queremos que el SOLICITANTE vea *su propia* solicitud aunque no sea dueño.
-  - Otros usuarios no necesitan ver las solicitudes de terceros.
-*/
-
-// Función para cargar intercambios (ahora mostrando al dueño y al solicitante)
-async function cargarIntercambios(pubId, ownerId) {
-    const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Cargando solicitudes de intercambio...";
-
-    try {
-        const { data, error } = await supabase
-            .from("intercambios")
-            .select(`
-                id,
+            .insert([{
+                publicacion_id: publicacionId,
+                user_id: currentUserId,
                 mensaje,
-                estado,
-                user_id,
-                profiles(id, full_name)
-            `)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
+                estado: "pendiente"
+            }]);
         if (error) throw error;
 
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
-            return;
-        }
-
-        // Filtrar lo que debe ver el usuario actual:
-        // - Si soy el dueño (ownerId) muestro todas.
-        // - Si soy solicitante muestro solo mis solicitudes.
-        const visible = data.filter(i => {
-            if (currentUserId === ownerId) return true;       // dueño ve todo
-            if (i.user_id === currentUserId) return true;     // solicitante ve su(s) solicitud(es)
-            return false;                                     // otros no ven
-        });
-
-        if (visible.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio para ti.</p>";
-            return;
-        }
-
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            visible.map(i => `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-
-                    ${(
-                        // Si soy el dueño de la publicación y la solicitud está pendiente, puedo aceptar/rechazar
-                        (currentUserId === ownerId && i.estado === "Pendiente")
-                        ? `
-                            <div>
-                                <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                                <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
-                            </div>
-                        `
-                        : ""
-                    )}
-
-                    ${(
-                        // Mostrar botón de chat si el intercambio está Aceptado y el usuario es parte (dueño o solicitante)
-                        (i.estado === "Aceptado" && (currentUserId === ownerId || currentUserId === i.user_id))
-                        ? `<button class="btn btn-sm btn-primary" onclick="abrirChat(${i.id})">Abrir Chat</button>`
-                        : ""
-                    )}
-                </div>
-            `).join("");
+        cargarIntercambios(publicacionId);
     } catch (err) {
-        console.error("❌ Error al cargar intercambios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
+        console.error("❌ Error al solicitar intercambio:", err.message);
     }
 }
 
-// Función para actualizar estado de intercambio
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
+async function actualizarIntercambio(intercambioId, nuevoEstado) {
     try {
         const { error } = await supabase
             .from("intercambios")
             .update({ estado: nuevoEstado })
             .eq("id", intercambioId);
+        if (error) throw error;
+
+        await cargarPublicaciones();
+    } catch (err) {
+        console.error("❌ Error al actualizar intercambio:", err.message);
+    }
+}
+
+async function cargarIntercambios(publicacionId, publicacionOwnerId) {
+    const intercambiosEl = document.getElementById(`intercambios-${publicacionId}`);
+    if (!intercambiosEl) return;
+
+    try {
+        const { data: intercambios, error } = await supabase
+            .from("intercambios")
+            .select("*, profiles!inner(id, full_name)")
+            .eq("publicacion_id", publicacionId);
 
         if (error) throw error;
 
-        // Si se aceptó, crear chat si no existe (esto permitirá que ambos puedan abrir chat)
-        if (nuevoEstado === "Aceptado") {
-            try {
-                const { data: existingChat, error: selErr } = await supabase
-                    .from("chats")
-                    .select("*")
-                    .eq("intercambio_id", intercambioId)
-                    .maybeSingle();
-
-                if (selErr) throw selErr;
-
-                if (!existingChat) {
-                    const { error: insErr } = await supabase
-                        .from("chats")
-                        .insert([{ intercambio_id: intercambioId }]);
-                    if (insErr) throw insErr;
-                }
-            } catch (chatErr) {
-                console.error("❌ Error creando chat tras aceptar intercambio:", chatErr.message || chatErr);
-                // no hacemos rollback sobre la aceptación, pero avisamos en consola
-            }
+        if (!intercambios || intercambios.length === 0) {
+            intercambiosEl.innerHTML = `<p class="text-muted">No hay solicitudes de intercambio.</p>`;
+            return;
         }
 
-        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
-        cargarIntercambios(pubId, currentUserId);
+        intercambiosEl.innerHTML = intercambios.map(inter => {
+            const isOwner = currentUserId === publicacionOwnerId;
+            const isRequester = currentUserId === inter.user_id;
+
+            if (!isOwner && !isRequester) return "";
+
+            let html = `<div class="border p-2 mb-2 rounded">
+                <p><strong>${inter.profiles.full_name}</strong> dice: ${inter.mensaje}</p>
+                <p>Estado: <span class="badge ${inter.estado === 'aceptado' ? 'bg-success' : inter.estado === 'rechazado' ? 'bg-danger' : 'bg-warning text-dark'}">${inter.estado}</span></p>
+            `;
+
+            if (isOwner && inter.estado === "pendiente") {
+                html += `
+                    <button class="btn btn-sm btn-success me-2" onclick="actualizarIntercambio(${inter.id}, 'aceptado')">Aceptar</button>
+                    <button class="btn btn-sm btn-danger" onclick="actualizarIntercambio(${inter.id}, 'rechazado')">Rechazar</button>
+                `;
+            }
+
+            if ((isOwner || isRequester) && inter.estado === "aceptado") {
+                html += `
+                    <button class="btn btn-sm btn-primary mt-2" onclick="abrirChat(${inter.id})">Abrir Chat</button>
+                `;
+            }
+
+            html += `</div>`;
+            return html;
+        }).join("");
+
     } catch (err) {
-        console.error("❌ Error al actualizar estado:", err.message);
-        alert("❌ No se pudo actualizar la solicitud.");
+        console.error("❌ Error al cargar intercambios:", err.message);
+        intercambiosEl.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
     }
+}
+
+// ======================= CHAT ==========================
+window.abrirChat = async function (intercambioId) {
+    chatActualId = intercambioId;
+    chatMensajesEl.innerHTML = "<p class='text-muted'>Cargando mensajes...</p>";
+
+    const modal = new bootstrap.Modal(chatModalEl);
+    modal.show();
+
+    await cargarMensajes(intercambioId);
 };
 
-/* =========================
-   CHAT (mensajes + realtime)
-   ========================= */
-
-let chatActualId = null;
-let subscriptionChannel = null;
-
-// abrirChat recibe el intercambioId (id de la fila en 'intercambios')
-window.abrirChat = async (intercambioId) => {
+async function cargarMensajes(intercambioId) {
     try {
-        // buscar chat asociado
-        const { data: existingChat, error: selErr } = await supabase
+        const { data: chat, error: chatError } = await supabase
             .from("chats")
-            .select("*")
+            .select("id")
             .eq("intercambio_id", intercambioId)
-            .maybeSingle();
+            .single();
 
-        if (selErr) throw selErr;
+        if (chatError && chatError.code !== "PGRST116") throw chatError;
 
-        let chat;
-        if (!existingChat) {
-            // crear chat si no existe
-            const { data: newChat, error: insErr } = await supabase
+        let chatId = chat ? chat.id : null;
+
+        if (!chatId) {
+            const { data: nuevoChat, error: nuevoChatError } = await supabase
                 .from("chats")
                 .insert([{ intercambio_id: intercambioId }])
                 .select()
                 .single();
-            if (insErr) throw insErr;
-            chat = newChat;
-        } else {
-            chat = existingChat;
+            if (nuevoChatError) throw nuevoChatError;
+            chatId = nuevoChat.id;
         }
 
-        chatActualId = chat.id;
+        chatActualId = chatId;
 
-        // Mostrar el contenedor del chat (si está oculto)
-        if (chatContainerEl) {
-            chatContainerEl.classList.remove("d-none");
-            // opcional: scrollear al final
-        }
-
-        await cargarMensajes(chatActualId);
-
-        // Desuscribirse del canal anterior (si existe)
-        if (subscriptionChannel) {
-            try {
-                await supabase.removeChannel(subscriptionChannel);
-            } catch (e) {
-                // ignore
-            }
-            subscriptionChannel = null;
-        }
-
-        // Suscribirse a nuevos mensajes de este chat
-        subscriptionChannel = supabase
-            .channel(`public:mensajes:chat_${chatActualId}`)
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "mensajes", filter: `chat_id=eq.${chatActualId}` },
-                (payload) => {
-                    const m = payload.new;
-                    appendMensajeAlDOM(m);
-                }
-            )
-            .subscribe((status) => {
-                // opcional: handle status ('SUBSCRIBED' etc.)
-                // console.log('subscription status', status);
-            });
-
-    } catch (err) {
-        console.error("❌ Error abriendo chat:", err.message || err);
-        alert("❌ No se pudo abrir el chat.");
-    }
-};
-
-async function cargarMensajes(chatId) {
-    if (!chatMensajesEl) return;
-    chatMensajesEl.innerHTML = "Cargando mensajes...";
-
-    try {
         const { data: mensajes, error } = await supabase
             .from("mensajes")
-            .select(`id, remitente, contenido, created_at`)
+            .select("*, profiles!inner(id, full_name)")
             .eq("chat_id", chatId)
             .order("created_at", { ascending: true });
 
         if (error) throw error;
 
-        if (!mensajes || mensajes.length === 0) {
-            chatMensajesEl.innerHTML = "<p class='text-muted'>No hay mensajes aún.</p>";
-            return;
-        }
-
-        chatMensajesEl.innerHTML = mensajes.map(m => renderMensajeHTML(m)).join("");
-        // scrollear al final
-        chatMensajesEl.scrollTop = chatMensajesEl.scrollHeight;
+        chatMensajesEl.innerHTML = mensajes.map(m => `
+            <p><strong>${m.profiles.full_name}:</strong> ${m.contenido}</p>
+        `).join("");
     } catch (err) {
         console.error("❌ Error al cargar mensajes:", err.message);
-        chatMensajesEl.innerHTML = "<p class='text-danger'>Error cargando mensajes.</p>";
+        chatMensajesEl.innerHTML = "<p class='text-danger'>Error al cargar mensajes.</p>";
     }
 }
 
-function renderMensajeHTML(m) {
-    const isMe = m.remitente === currentUserId;
-    const who = isMe ? "Tú" : (m.remitente || "Usuario");
-    const time = m.created_at ? new Date(m.created_at).toLocaleString() : "";
-    return `
-        <div class="mb-2 ${isMe ? 'text-end' : 'text-start'}">
-            <div class="d-inline-block p-2 rounded ${isMe ? 'bg-primary text-white' : 'bg-light text-dark'}">
-                <small class="d-block"><strong>${who}</strong> <span class="text-muted" style="font-size:10px;">${time}</span></small>
-                <div>${escapeHtml(m.contenido)}</div>
-            </div>
-        </div>
-    `;
-}
-
-function appendMensajeAlDOM(m) {
-    if (!chatMensajesEl) return;
-    const html = renderMensajeHTML(m);
-    chatMensajesEl.insertAdjacentHTML('beforeend', html);
-    chatMensajesEl.scrollTop = chatMensajesEl.scrollHeight;
-}
-
-// enviar mensaje desde el form del chat
 if (formChat) {
     formChat.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -526,36 +346,34 @@ if (formChat) {
         try {
             const { error } = await supabase
                 .from("mensajes")
-                .insert([{ chat_id: chatActualId, remitente: currentUserId, contenido }]);
-
+                .insert([{
+                    chat_id: chatActualId,
+                    remitente: currentUserId,
+                    contenido
+                }]);
             if (error) throw error;
 
             chatInput.value = "";
-            // cargarMensajes(chatActualId); // no es necesario porque la suscripción añadirá el mensaje
+            await cargarMensajes(chatActualId);
         } catch (err) {
             console.error("❌ Error al enviar mensaje:", err.message);
-            alert("❌ No se pudo enviar el mensaje.");
         }
     });
 }
 
-// utilidad: escapar HTML para evitar XSS en mensajes
-function escapeHtml(unsafe) {
-    return unsafe
-         .replaceAll('&', "&amp;")
-         .replaceAll('<', "&lt;")
-         .replaceAll('>', "&gt;")
-         .replaceAll('"', "&quot;")
-         .replaceAll("'", "&#039;");
-}
+// ======================= ELIMINAR PUBLICACIÓN ==========================
+window.eliminarPublicacion = async function (publicacionId) {
+    if (!confirm("¿Estás seguro de eliminar esta publicación?")) return;
 
-// función para cerrar chat (opcional)
-window.cerrarChat = () => {
-    if (chatContainerEl) chatContainerEl.classList.add("d-none");
-    chatMensajesEl && (chatMensajesEl.innerHTML = "");
-    chatActualId = null;
-    if (subscriptionChannel) {
-        supabase.removeChannel(subscriptionChannel).catch(() => {});
-        subscriptionChannel = null;
+    try {
+        const { error } = await supabase
+            .from("publicaciones")
+            .delete()
+            .eq("id", publicacionId);
+        if (error) throw error;
+
+        await cargarPublicaciones();
+    } catch (err) {
+        console.error("❌ Error al eliminar publicación:", err.message);
     }
 };
