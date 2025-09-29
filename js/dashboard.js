@@ -141,7 +141,7 @@ async function cargarPublicaciones() {
         // Cargar comentarios e intercambios por cada publicación
         data.forEach(pub => {
             cargarComentarios(pub.id);
-            cargarIntercambios(pub.id);
+            cargarIntercambios(pub.id, pub.user_id);
         });
 
     } catch (err) {
@@ -269,8 +269,8 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios
-async function cargarIntercambios(pubId) {
+// Función para cargar intercambios (ahora con botones para el dueño)
+async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
 
@@ -281,6 +281,7 @@ async function cargarIntercambios(pubId) {
                 id,
                 mensaje,
                 estado,
+                user_id,
                 profiles(id, full_name)
             `)
             .eq("publicacion_id", pubId)
@@ -294,9 +295,37 @@ async function cargarIntercambios(pubId) {
         }
 
         container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => `<p>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</p>`).join("");
+            data.map(i => `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
+                    ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
+                        <div>
+                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
+                            <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+                        </div>
+                    ` : ""}
+                </div>
+            `).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
     }
 }
+
+// Función para actualizar estado de intercambio
+window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .update({ estado: nuevoEstado })
+            .eq("id", intercambioId);
+
+        if (error) throw error;
+
+        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
+        cargarIntercambios(pubId, currentUserId);
+    } catch (err) {
+        console.error("❌ Error al actualizar estado:", err.message);
+        alert("❌ No se pudo actualizar la solicitud.");
+    }
+};
