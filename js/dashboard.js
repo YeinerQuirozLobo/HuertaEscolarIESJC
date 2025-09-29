@@ -5,11 +5,6 @@ const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Variables globales para el modal de intercambio
-let selectedIntercambioId = null;
-let selectedNuevoEstado = null;
-let selectedPubId = null;
-
 // Obtener sesión y usuario actual
 let currentUserId = null;
 
@@ -274,7 +269,7 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios (ahora con botones y modal)
+// Función para cargar intercambios (ahora con botones para el dueño y chat si está aceptado)
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
@@ -305,9 +300,12 @@ async function cargarIntercambios(pubId, ownerId) {
                     <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
                     ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
                         <div>
-                            <button class="btn btn-sm btn-success" onclick="abrirModalIntercambio(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                            <button class="btn btn-sm btn-danger" onclick="abrirModalIntercambio(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
+                            <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
                         </div>
+                    ` : ""}
+                    ${(i.estado === "Aceptado" && (currentUserId === ownerId || currentUserId === i.user_id)) ? `
+                        <button class="btn btn-sm btn-primary" onclick="abrirChat(${i.id})">Abrir Chat</button>
                     ` : ""}
                 </div>
             `).join("");
@@ -317,35 +315,84 @@ async function cargarIntercambios(pubId, ownerId) {
     }
 }
 
-// Abrir modal de confirmación
-window.abrirModalIntercambio = (intercambioId, nuevoEstado, pubId) => {
-    selectedIntercambioId = intercambioId;
-    selectedNuevoEstado = nuevoEstado;
-    selectedPubId = pubId;
-
-    const modal = new bootstrap.Modal(document.getElementById("modalIntercambio"));
-    modal.show();
-};
-
-// Confirmar acción desde el modal
-window.confirmarCambioEstado = async () => {
-    if (!selectedIntercambioId || !selectedNuevoEstado || !selectedPubId) return;
-
+// Función para actualizar estado de intercambio
+window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
     try {
         const { error } = await supabase
             .from("intercambios")
-            .update({ estado: selectedNuevoEstado })
-            .eq("id", selectedIntercambioId);
+            .update({ estado: nuevoEstado })
+            .eq("id", intercambioId);
 
         if (error) throw error;
 
-        alert(`✅ Solicitud ${selectedNuevoEstado.toLowerCase()}`);
-        cargarIntercambios(selectedPubId, currentUserId);
+        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
+        cargarIntercambios(pubId, currentUserId);
     } catch (err) {
         console.error("❌ Error al actualizar estado:", err.message);
         alert("❌ No se pudo actualizar la solicitud.");
     }
-
-    const modal = bootstrap.Modal.getInstance(document.getElementById("modalIntercambio"));
-    modal.hide();
 };
+
+/* =========================
+   CHAT ENTRE USUARIOS
+   ========================= */
+
+// Abrir chat modal
+window.abrirChat = async (intercambioId) => {
+    const modal = new bootstrap.Modal(document.getElementById("chatModal"));
+    modal.show();
+
+    document.getElementById("chatMessages").innerHTML = "Cargando mensajes...";
+    document.getElementById("sendChatBtn").onclick = () => enviarMensaje(intercambioId);
+
+    cargarMensajes(intercambioId);
+};
+
+// Cargar mensajes de un intercambio
+async function cargarMensajes(intercambioId) {
+    try {
+        const { data, error } = await supabase
+            .from("mensajes_chat")
+            .select("id, mensaje, user_id, created_at, profiles(full_name)")
+            .eq("intercambio_id", intercambioId)
+            .order("created_at", { ascending: true });
+
+        if (error) throw error;
+
+        const container = document.getElementById("chatMessages");
+        if (!data || data.length === 0) {
+            container.innerHTML = "<p class='text-muted'>No hay mensajes aún.</p>";
+            return;
+        }
+
+        container.innerHTML = data.map(m => `
+            <div class="${m.user_id === currentUserId ? 'text-end' : 'text-start'} mb-2">
+                <span class="badge ${m.user_id === currentUserId ? 'bg-primary' : 'bg-secondary'}">
+                    ${m.profiles.full_name}: ${m.mensaje}
+                </span>
+            </div>
+        `).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar mensajes:", err.message);
+    }
+}
+
+// Enviar mensaje
+async function enviarMensaje(intercambioId) {
+    const input = document.getElementById("chatInput");
+    const mensaje = input.value.trim();
+    if (!mensaje) return;
+
+    try {
+        const { error } = await supabase
+            .from("mensajes_chat")
+            .insert([{ intercambio_id: intercambioId, user_id: currentUserId, mensaje }]);
+
+        if (error) throw error;
+
+        input.value = "";
+        cargarMensajes(intercambioId);
+    } catch (err) {
+        console.error("❌ Error al enviar mensaje:", err.message);
+    }
+}
