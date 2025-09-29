@@ -269,7 +269,7 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios (ahora con botones para el dueño)
+// Función para cargar intercambios (visible para dueño y solicitante)
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
@@ -295,17 +295,42 @@ async function cargarIntercambios(pubId, ownerId) {
         }
 
         container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-                    ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
-                        <div>
-                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                            <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+            data.map(i => {
+                const isRequester = i.user_id === currentUserId;
+                const isOwner = currentUserId === ownerId;
+
+                let acciones = "";
+                if (isOwner && i.estado === "Pendiente") {
+                    acciones = `
+                        <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
+                        <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+                    `;
+                }
+
+                // Mostrar chat si está aceptado y soy dueño o solicitante
+                let chatBox = "";
+                if (i.estado === "Aceptado" && (isOwner || isRequester)) {
+                    chatBox = `
+                        <div class="card mt-2 p-2 border">
+                            <div id="chat-mensajes-${i.id}" class="mb-2" style="max-height:150px; overflow-y:auto;"></div>
+                            <div class="input-group">
+                                <input type="text" id="chat-input-${i.id}" class="form-control" placeholder="Escribe un mensaje">
+                                <button class="btn btn-primary" onclick="enviarMensajeChat(${i.id})">Enviar</button>
+                            </div>
                         </div>
-                    ` : ""}
-                </div>
-            `).join("");
+                    `;
+                    // cargar mensajes
+                    cargarMensajesChat(i.id);
+                }
+
+                return `
+                    <div class="mb-2 p-2 border rounded">
+                        <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
+                        <div>${acciones}</div>
+                        ${chatBox}
+                    </div>
+                `;
+            }).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
@@ -329,3 +354,49 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
         alert("❌ No se pudo actualizar la solicitud.");
     }
 };
+
+// ============================
+// CHAT FUNCIONES
+// ============================
+
+// Enviar mensaje en el chat
+window.enviarMensajeChat = async (intercambioId) => {
+    const input = document.getElementById(`chat-input-${intercambioId}`);
+    const mensaje = input.value.trim();
+    if (!mensaje) return;
+
+    try {
+        const { error } = await supabase
+            .from("chat_mensajes")
+            .insert([{ intercambio_id: intercambioId, user_id: currentUserId, mensaje }]);
+
+        if (error) throw error;
+
+        input.value = "";
+        cargarMensajesChat(intercambioId);
+    } catch (err) {
+        console.error("❌ Error al enviar mensaje de chat:", err.message);
+    }
+};
+
+// Cargar mensajes del chat
+async function cargarMensajesChat(intercambioId) {
+    const container = document.getElementById(`chat-mensajes-${intercambioId}`);
+    if (!container) return;
+
+    try {
+        const { data, error } = await supabase
+            .from("chat_mensajes")
+            .select(`*, profiles!inner(id, full_name)`)
+            .eq("intercambio_id", intercambioId)
+            .order("id", { ascending: true });
+
+        if (error) throw error;
+
+        container.innerHTML = data.map(m => `
+            <div><strong>${m.profiles.full_name}:</strong> ${m.mensaje}</div>
+        `).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar mensajes del chat:", err.message);
+    }
+}
