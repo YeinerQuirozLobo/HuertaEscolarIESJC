@@ -302,7 +302,7 @@ async function cargarIntercambios(pubId, ownerId) {
                                 <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
                             ` : ""}
                             ${puedeAbrirChat ? `
-                                <button class="btn btn-sm btn-primary" onclick="abrirChatPorIntercambio(${i.id})">Abrir Chat</button>
+                                <button class="btn btn-sm btn-primary" onclick="abrirChatModal(${i.id})">Abrir Chat</button>
                             ` : ""}
                         </div>
                     </div>
@@ -333,11 +333,11 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
 };
 
 // ---------------------------
-// CHAT ENTRE USUARIOS
+// CHAT EN MODAL FLOTA
 // ---------------------------
 
-// Abrir chat desde el intercambio
-window.abrirChatPorIntercambio = async (intercambioId) => {
+// Abrir chat desde intercambio con modal
+window.abrirChatModal = async (intercambioId) => {
     // Verificar si ya existe chat
     let { data: chatExistente } = await supabase
         .from("chats")
@@ -357,41 +357,54 @@ window.abrirChatPorIntercambio = async (intercambioId) => {
         chatId = chatExistente.id;
     }
 
-    abrirChat(chatId, intercambioId);
-};
-
-// Función para mostrar chat
-const abrirChat = async (chatId, intercambioId) => {
-    const chatContainer = document.getElementById("chatContainer");
-    chatContainer.innerHTML = "";
-
-    const { data: intercambio } = await supabase
-        .from("intercambios")
-        .select("user_id, publicacion_id")
-        .eq("id", intercambioId)
-        .single();
-
-    const { data: publicacion } = await supabase
-        .from("publicaciones")
-        .select("user_id")
-        .eq("id", intercambio.publicacion_id)
-        .single();
-
-    const participante1 = intercambio.user_id;
-    const participante2 = publicacion.user_id;
-
-    if (currentUserId !== participante1 && currentUserId !== participante2) {
-        alert("❌ No puedes abrir este chat.");
-        return;
-    }
-
-    chatContainer.innerHTML = `
-        <h5 class="mb-2">Chat del intercambio</h5>
-        <div id="mensajes-${chatId}" style="height: 250px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
-        <textarea id="inputMensaje-${chatId}" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
-        <button class="btn btn-primary btn-sm" onclick="enviarMensaje(${chatId}, ${participante1}, ${participante2})">Enviar</button>
+    // Crear modal dinámicamente
+    let modalHtml = `
+    <div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="chatModalLabel">Chat del intercambio</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div id="mensajes-${chatId}" style="height: 250px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
+            <textarea id="inputMensaje-${chatId}" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" onclick="enviarMensajeModal(${chatId})">Enviar</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
     `;
 
+    // Agregar modal al body
+    document.body.insertAdjacentHTML("beforeend", modalHtml);
+
+    // Inicializar Bootstrap modal
+    let chatModal = new bootstrap.Modal(document.getElementById('chatModal'));
+    chatModal.show();
+
+    cargarMensajes(chatId);
+
+    // Al cerrar modal eliminarlo del DOM
+    document.getElementById('chatModal').addEventListener('hidden.bs.modal', () => {
+        document.getElementById('chatModal').remove();
+    });
+};
+
+// Función para enviar mensaje desde modal
+window.enviarMensajeModal = async (chatId) => {
+    const input = document.getElementById(`inputMensaje-${chatId}`);
+    const contenido = input.value.trim();
+    if (!contenido) return;
+
+    await supabase
+        .from("mensajes")
+        .insert([{ chat_id: chatId, remitente: currentUserId, contenido }]);
+
+    input.value = "";
     cargarMensajes(chatId);
 };
 
@@ -412,22 +425,3 @@ async function cargarMensajes(chatId) {
 
     contenedor.scrollTop = contenedor.scrollHeight;
 }
-
-// Función para enviar mensaje
-window.enviarMensaje = async (chatId, participante1, participante2) => {
-    const input = document.getElementById(`inputMensaje-${chatId}`);
-    const contenido = input.value.trim();
-    if (!contenido) return;
-
-    if (currentUserId !== participante1 && currentUserId !== participante2) {
-        alert("❌ No puedes enviar mensajes en este chat.");
-        return;
-    }
-
-    await supabase
-        .from("mensajes")
-        .insert([{ chat_id: chatId, remitente: currentUserId, contenido }]);
-
-    input.value = "";
-    cargarMensajes(chatId);
-};

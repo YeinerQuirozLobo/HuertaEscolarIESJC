@@ -25,7 +25,6 @@
 <div class="container mt-4">
     <h1 class="text-center mb-4">Bienvenido a la Huerta Escolar</h1>
     <div class="row">
-        <!-- Publicación de productos -->
         <div class="col-md-4">
             <div class="card shadow p-3 mb-4">
                 <h4 class="mb-3">Publica tu Producto</h4>
@@ -68,30 +67,29 @@
                 </form>
             </div>
         </div>
-
-        <!-- Feed de publicaciones -->
         <div class="col-md-8">
             <div id="feed">
-                <!-- Aquí JS insertará dinámicamente las publicaciones, intercambios y comentarios -->
+                <!-- Aquí tu JS insertará dinámicamente las publicaciones -->
             </div>
         </div>
     </div>
 </div>
 
-<!-- Modal para Chat Privado -->
+<!-- MODAL CHAT FLOTANTE -->
 <div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="chatModalLabel">Chat Privado</h5>
+        <h5 class="modal-title" id="chatModalLabel">Chat del Intercambio</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
-      <div class="modal-body" id="chatMessages" style="max-height:400px; overflow-y:auto;">
-        <!-- Mensajes cargados dinámicamente -->
+      <div class="modal-body">
+        <div id="mensajesModal" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
+        <textarea id="inputMensajeModal" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
       </div>
       <div class="modal-footer">
-        <input type="text" id="chatInput" class="form-control me-2" placeholder="Escribe un mensaje...">
-        <button type="button" id="sendChatBtn" class="btn btn-primary">Enviar</button>
+        <button type="button" class="btn btn-primary" id="enviarMensajeModalBtn">Enviar</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>
@@ -99,6 +97,5 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script type="module" src="js/dashboard.js"></script>
-
 </body>
 </html>
