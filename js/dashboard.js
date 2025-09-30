@@ -277,7 +277,7 @@ async function cargarIntercambios(pubId, ownerId) {
     try {
         const { data, error } = await supabase
             .from("intercambios")
-            .select(`id, mensaje, estado, user_id, profiles(id, full_name)`)
+            .select(`id, mensaje, estado, user_id, profiles!inner(id, full_name)`)
             .eq("publicacion_id", pubId)
             .order("id", { ascending: true });
 
@@ -338,12 +338,34 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
 
 // Abrir chat desde intercambio con modal
 window.abrirChatModal = async (intercambioId) => {
+    // Obtener datos del intercambio con usuario solicitante y propietario
+    const { data: intercambio, error: intercambioError } = await supabase
+        .from("intercambios")
+        .select(`
+            id,
+            mensaje,
+            estado,
+            user_id,
+            publicaciones(user_id),
+            profiles!user_id(id, full_name)
+        `)
+        .eq("id", intercambioId)
+        .single();
+    if (intercambioError) {
+        console.error("❌ Error al obtener intercambio:", intercambioError.message);
+        return;
+    }
+
+    const userSolicitante = intercambio.user_id;
+    const userPropietario = intercambio.publicaciones.user_id;
+
     // Verificar si ya existe chat
     let { data: chatExistente } = await supabase
         .from("chats")
         .select("*")
         .eq("intercambio_id", intercambioId)
-        .single();
+        .single()
+        .catch(() => ({ data: null }));
 
     let chatId;
     if (!chatExistente) {
@@ -371,7 +393,7 @@ window.abrirChatModal = async (intercambioId) => {
             <textarea id="inputMensaje-${chatId}" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-primary" onclick="enviarMensajeModal(${chatId})">Enviar</button>
+            <button type="button" class="btn btn-primary" onclick="enviarMensajeModal(${chatId}, '${userSolicitante}', '${userPropietario}')">Enviar</button>
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
           </div>
         </div>
@@ -386,7 +408,7 @@ window.abrirChatModal = async (intercambioId) => {
     let chatModal = new bootstrap.Modal(document.getElementById('chatModal'));
     chatModal.show();
 
-    cargarMensajes(chatId);
+    cargarMensajes(chatId, userSolicitante, userPropietario);
 
     // Al cerrar modal eliminarlo del DOM
     document.getElementById('chatModal').addEventListener('hidden.bs.modal', () => {
@@ -395,7 +417,7 @@ window.abrirChatModal = async (intercambioId) => {
 };
 
 // Función para enviar mensaje desde modal
-window.enviarMensajeModal = async (chatId) => {
+window.enviarMensajeModal = async (chatId, userSolicitante, userPropietario) => {
     const input = document.getElementById(`inputMensaje-${chatId}`);
     const contenido = input.value.trim();
     if (!contenido) return;
@@ -405,22 +427,24 @@ window.enviarMensajeModal = async (chatId) => {
         .insert([{ chat_id: chatId, remitente: currentUserId, contenido }]);
 
     input.value = "";
-    cargarMensajes(chatId);
+    cargarMensajes(chatId, userSolicitante, userPropietario);
 };
 
-// Función para cargar mensajes (corregida para mostrar remitente y receptor)
-async function cargarMensajes(chatId) {
+// Función para cargar mensajes
+async function cargarMensajes(chatId, userSolicitante, userPropietario) {
     const contenedor = document.getElementById(`mensajes-${chatId}`);
     if (!contenedor) return;
 
     const { data: mensajes } = await supabase
-        .from('chat_con_nombres')  // <--- usar la vista que contiene remitente y receptor
-        .select('*')
-        .eq('chat_id', chatId)
-        .order('created_at', { ascending: true });
+        .from("mensajes")
+        .select(`*, profiles!remitente(id, full_name)`)
+        .eq("chat_id", chatId)
+        .order("created_at", { ascending: true });
 
     contenedor.innerHTML = mensajes.map(m => {
-        return `<p><strong>${m.remitente_nombre} ➜ ${m.receptor_nombre}:</strong> ${m.contenido}</p>`;
+        let nombre = (m.remitente.id === userSolicitante) ? "Solicitante" : "Propietario";
+        let nombreFull = m.remitente.full_name;
+        return `<p><strong>${nombreFull}:</strong> ${m.contenido}</p>`;
     }).join("");
 
     contenedor.scrollTop = contenedor.scrollHeight;
