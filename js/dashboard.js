@@ -258,7 +258,7 @@ window.realizarIntercambio = async (pubId) => {
         const { data: newIntercambio, error } = await supabase
             .from("intercambios")
             .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
-            .select("id, mensaje, estado, profiles(id, full_name)");
+            .select();
 
         if (error) throw error;
 
@@ -269,45 +269,54 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios
+// Función para cargar intercambios CORRECTA
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
 
     try {
-        const { data, error } = await supabase
+        const { data: intercambios, error } = await supabase
             .from("intercambios")
-            .select(`id, mensaje, estado, user_id, profiles!inner(id, full_name)`)
+            .select("*")
             .eq("publicacion_id", pubId)
             .order("id", { ascending: true });
-
         if (error) throw error;
 
-        if (!data || data.length === 0) {
+        if (!intercambios || intercambios.length === 0) {
             container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
             return;
         }
 
+        // Traer perfiles de los usuarios que hicieron solicitudes
+        const userIds = intercambios.map(i => i.user_id);
+        const { data: perfiles } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", userIds);
+
         container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => {
+            intercambios.map(i => {
+                const perfil = perfiles.find(p => p.id === i.user_id);
+                const nombreUsuario = perfil ? perfil.full_name : "Desconocido";
                 const esOwner = currentUserId === ownerId;
                 const puedeAbrirChat = i.estado === "Aceptado" && (esOwner || i.user_id === currentUserId);
 
                 return `
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
+                        <span>${nombreUsuario} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
                         <div>
                             ${esOwner && i.estado === "Pendiente" ? `
                                 <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
                                 <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
                             ` : ""}
                             ${puedeAbrirChat ? `
-                                <button class="btn btn-sm btn-primary" onclick="abrirChatModal(${i.id})">Abrir Chat</button>
+                                <button class="btn btn-sm btn-primary" onclick="abrirChatModal(${i.id}, ${ownerId}, ${i.user_id})">Abrir Chat</button>
                             ` : ""}
                         </div>
                     </div>
                 `;
             }).join("");
+
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
@@ -337,35 +346,13 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
 // ---------------------------
 
 // Abrir chat desde intercambio con modal
-window.abrirChatModal = async (intercambioId) => {
-    // Obtener datos del intercambio con usuario solicitante y propietario
-    const { data: intercambio, error: intercambioError } = await supabase
-        .from("intercambios")
-        .select(`
-            id,
-            mensaje,
-            estado,
-            user_id,
-            publicaciones(user_id),
-            profiles!user_id(id, full_name)
-        `)
-        .eq("id", intercambioId)
-        .single();
-    if (intercambioError) {
-        console.error("❌ Error al obtener intercambio:", intercambioError.message);
-        return;
-    }
-
-    const userSolicitante = intercambio.user_id;
-    const userPropietario = intercambio.publicaciones.user_id;
-
+window.abrirChatModal = async (intercambioId, user1Id, user2Id) => {
     // Verificar si ya existe chat
     let { data: chatExistente } = await supabase
         .from("chats")
         .select("*")
         .eq("intercambio_id", intercambioId)
-        .single()
-        .catch(() => ({ data: null }));
+        .single();
 
     let chatId;
     if (!chatExistente) {
@@ -385,7 +372,7 @@ window.abrirChatModal = async (intercambioId) => {
       <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="chatModalLabel">Chat del intercambio</h5>
+            <h5 class="modal-title" id="chatModalLabel">Chat entre usuarios</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
           </div>
           <div class="modal-body">
@@ -393,59 +380,68 @@ window.abrirChatModal = async (intercambioId) => {
             <textarea id="inputMensaje-${chatId}" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-primary" onclick="enviarMensajeModal(${chatId}, '${userSolicitante}', '${userPropietario}')">Enviar</button>
+            <button type="button" class="btn btn-primary" onclick="enviarMensajeModal(${chatId})">Enviar</button>
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
           </div>
         </div>
       </div>
     </div>
     `;
-
-    // Agregar modal al body
     document.body.insertAdjacentHTML("beforeend", modalHtml);
-
-    // Inicializar Bootstrap modal
-    let chatModal = new bootstrap.Modal(document.getElementById('chatModal'));
+    const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
     chatModal.show();
 
-    cargarMensajes(chatId, userSolicitante, userPropietario);
+    cargarMensajes(chatId);
 
-    // Al cerrar modal eliminarlo del DOM
-    document.getElementById('chatModal').addEventListener('hidden.bs.modal', () => {
-        document.getElementById('chatModal').remove();
+    // Al cerrar modal se elimina del DOM
+    document.getElementById("chatModal").addEventListener('hidden.bs.modal', function () {
+        document.getElementById("chatModal").remove();
     });
 };
 
-// Función para enviar mensaje desde modal
-window.enviarMensajeModal = async (chatId, userSolicitante, userPropietario) => {
-    const input = document.getElementById(`inputMensaje-${chatId}`);
-    const contenido = input.value.trim();
-    if (!contenido) return;
+// Cargar mensajes de chat
+async function cargarMensajes(chatId) {
+    const container = document.getElementById(`mensajes-${chatId}`);
+    container.innerHTML = "Cargando mensajes...";
 
-    await supabase
-        .from("mensajes")
-        .insert([{ chat_id: chatId, remitente: currentUserId, contenido }]);
+    try {
+        const { data, error } = await supabase
+            .from("mensajes")
+            .select("*, profiles!inner(id, full_name)")
+            .eq("chat_id", chatId)
+            .order("id", { ascending: true });
+        if (error) throw error;
 
-    input.value = "";
-    cargarMensajes(chatId, userSolicitante, userPropietario);
-};
+        container.innerHTML = data.map(m => {
+            const esYo = m.user_id === currentUserId;
+            return `<div class="${esYo ? 'text-end' : 'text-start'} mb-1">
+                        <strong>${m.profiles.full_name}:</strong> ${m.mensaje}
+                    </div>`;
+        }).join("");
 
-// Función para cargar mensajes
-async function cargarMensajes(chatId, userSolicitante, userPropietario) {
-    const contenedor = document.getElementById(`mensajes-${chatId}`);
-    if (!contenedor) return;
-
-    const { data: mensajes } = await supabase
-        .from("mensajes")
-        .select(`*, profiles!remitente(id, full_name)`)
-        .eq("chat_id", chatId)
-        .order("created_at", { ascending: true });
-
-    contenedor.innerHTML = mensajes.map(m => {
-        let nombre = (m.remitente.id === userSolicitante) ? "Solicitante" : "Propietario";
-        let nombreFull = m.remitente.full_name;
-        return `<p><strong>${nombreFull}:</strong> ${m.contenido}</p>`;
-    }).join("");
-
-    contenedor.scrollTop = contenedor.scrollHeight;
+        container.scrollTop = container.scrollHeight;
+    } catch (err) {
+        console.error("❌ Error al cargar mensajes:", err.message);
+        container.innerHTML = "<p class='text-danger'>Error al cargar mensajes.</p>";
+    }
 }
+
+// Enviar mensaje desde modal
+window.enviarMensajeModal = async (chatId) => {
+    const input = document.getElementById(`inputMensaje-${chatId}`);
+    const mensaje = input.value.trim();
+    if (!mensaje) return;
+
+    try {
+        const { error } = await supabase
+            .from("mensajes")
+            .insert([{ chat_id: chatId, user_id: currentUserId, mensaje }]);
+        if (error) throw error;
+
+        input.value = "";
+        cargarMensajes(chatId);
+    } catch (err) {
+        console.error("❌ Error al enviar mensaje:", err.message);
+        alert("❌ No se pudo enviar el mensaje.");
+    }
+};
