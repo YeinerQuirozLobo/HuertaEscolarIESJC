@@ -5,6 +5,12 @@ const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
+// (Chat) referencias
+const chatContainerEl = document.getElementById("chatContainer"); // contenedor del chat (card)
+const chatMensajesEl = document.getElementById("chatMensajes");   // div donde mostramos mensajes
+const formChat = document.getElementById("formChat");
+const chatInput = document.getElementById("chatInput");
+
 // Obtener sesión y usuario actual
 let currentUserId = null;
 
@@ -150,253 +156,218 @@ async function cargarPublicaciones() {
     }
 }
 
-// Función para eliminar publicación
-window.eliminarPublicacion = async (pubId) => {
+// Enviar comentario
+window.enviarComentario = async function (publicacionId) {
+    const comentarioInput = document.getElementById(`comentario-${publicacionId}`);
+    const contenido = comentarioInput.value.trim();
+    if (!contenido) return;
+
+    try {
+        const { error } = await supabase
+            .from("comentarios")
+            .insert([{ publicacion_id: publicacionId, user_id: currentUserId, contenido }]);
+        if (error) throw error;
+
+        comentarioInput.value = "";
+        await cargarComentarios(publicacionId);
+    } catch (err) {
+        console.error("❌ Error al comentar:", err.message);
+    }
+};
+
+// Cargar comentarios
+async function cargarComentarios(publicacionId) {
+    try {
+        const { data, error } = await supabase
+            .from("comentarios")
+            .select(`*, profiles!inner(id, full_name)`)
+            .eq("publicacion_id", publicacionId)
+            .order("id", { ascending: true });
+
+        if (error) throw error;
+
+        const contenedor = document.getElementById(`comentarios-${publicacionId}`);
+        contenedor.innerHTML = data.map(com => `
+            <p><strong>${com.profiles.full_name}:</strong> ${com.contenido}</p>
+        `).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar comentarios:", err.message);
+    }
+}
+
+// Realizar intercambio
+window.realizarIntercambio = async function (publicacionId) {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .insert([{ publicacion_id: publicacionId, solicitante_id: currentUserId, estado: "Pendiente" }]);
+        if (error) throw error;
+
+        alert("✅ Solicitud de intercambio enviada");
+        await cargarIntercambios(publicacionId);
+    } catch (err) {
+        console.error("❌ Error al solicitar intercambio:", err.message);
+    }
+};
+
+// Cargar intercambios
+async function cargarIntercambios(publicacionId, ownerId) {
+    try {
+        const { data, error } = await supabase
+            .from("intercambios")
+            .select(`*, profiles!inner(id, full_name)`)
+            .eq("publicacion_id", publicacionId)
+            .order("id", { ascending: true });
+
+        if (error) throw error;
+
+        const contenedor = document.getElementById(`intercambios-${publicacionId}`);
+        if (!data || data.length === 0) {
+            contenedor.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
+            return;
+        }
+
+        contenedor.innerHTML = data.map(inter => {
+            const isSolicitante = inter.solicitante_id === currentUserId;
+            const isOwner = ownerId === currentUserId;
+
+            // Mostrar botones solo al dueño de la publicación si está pendiente
+            let acciones = "";
+            if (isOwner && inter.estado === "Pendiente") {
+                acciones = `
+                    <button class="btn btn-success btn-sm" onclick="actualizarIntercambio(${inter.id}, 'Aceptado')">Aceptar</button>
+                    <button class="btn btn-danger btn-sm" onclick="actualizarIntercambio(${inter.id}, 'Rechazado')">Rechazar</button>
+                `;
+            }
+
+            // Mostrar chat si el intercambio está aceptado y el usuario participa (dueño o solicitante)
+            let chatBtn = "";
+            if (inter.estado === "Aceptado" && (isOwner || isSolicitante)) {
+                chatBtn = `<button class="btn btn-primary btn-sm" onclick="abrirChat(${inter.id})">Abrir Chat</button>`;
+            }
+
+            return `
+                <p>
+                    <strong>${inter.profiles.full_name}</strong> - Estado: ${inter.estado}
+                    ${acciones}
+                    ${chatBtn}
+                </p>
+            `;
+        }).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar intercambios:", err.message);
+    }
+}
+
+// Actualizar estado de intercambio
+window.actualizarIntercambio = async function (intercambioId, nuevoEstado) {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .update({ estado: nuevoEstado })
+            .eq("id", intercambioId);
+        if (error) throw error;
+
+        // Si es aceptado, crear chat (si no existe)
+        if (nuevoEstado === "Aceptado") {
+            const { data: chatExist } = await supabase
+                .from("chats")
+                .select("*")
+                .eq("intercambio_id", intercambioId)
+                .single();
+
+            if (!chatExist) {
+                await supabase.from("chats").insert([{ intercambio_id: intercambioId }]);
+            }
+        }
+
+        await cargarPublicaciones();
+    } catch (err) {
+        console.error("❌ Error al actualizar intercambio:", err.message);
+    }
+};
+
+// Abrir chat
+window.abrirChat = async function (intercambioId) {
+    chatContainerEl.style.display = "block";
+    chatMensajesEl.innerHTML = "<p class='text-muted'>Cargando chat...</p>";
+
+    try {
+        // Obtener chat vinculado al intercambio
+        const { data: chat, error: chatError } = await supabase
+            .from("chats")
+            .select("*")
+            .eq("intercambio_id", intercambioId)
+            .single();
+
+        if (chatError || !chat) {
+            chatMensajesEl.innerHTML = "<p class='text-danger'>❌ No se encontró el chat.</p>";
+            return;
+        }
+
+        chatContainerEl.dataset.chatId = chat.id;
+
+        await cargarMensajes(chat.id);
+
+    } catch (err) {
+        console.error("❌ Error al abrir chat:", err.message);
+    }
+};
+
+// Enviar mensaje al chat
+if (formChat) {
+    formChat.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const chatId = chatContainerEl.dataset.chatId;
+        const contenido = chatInput.value.trim();
+        if (!contenido) return;
+
+        try {
+            const { error } = await supabase
+                .from("mensajes")
+                .insert([{ chat_id: chatId, remitente: currentUserId, contenido }]);
+            if (error) throw error;
+
+            chatInput.value = "";
+            await cargarMensajes(chatId);
+        } catch (err) {
+            console.error("❌ Error al enviar mensaje de chat:", err.message);
+        }
+    });
+}
+
+// Cargar mensajes del chat
+async function cargarMensajes(chatId) {
+    try {
+        const { data, error } = await supabase
+            .from("mensajes")
+            .select(`*, profiles!inner(id, full_name)`)
+            .eq("chat_id", chatId)
+            .order("created_at", { ascending: true });
+
+        if (error) throw error;
+
+        chatMensajesEl.innerHTML = data.map(msg => `
+            <p><strong>${msg.profiles.full_name}:</strong> ${msg.contenido}</p>
+        `).join("");
+    } catch (err) {
+        console.error("❌ Error al cargar mensajes:", err.message);
+    }
+}
+
+// Eliminar publicación
+window.eliminarPublicacion = async function (publicacionId) {
     if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
 
     try {
         const { error } = await supabase
             .from("publicaciones")
             .delete()
-            .eq("id", pubId)
-            .eq("user_id", currentUserId);
-
+            .eq("id", publicacionId);
         if (error) throw error;
-        alert("✅ Publicación eliminada");
+
         await cargarPublicaciones();
     } catch (err) {
         console.error("❌ Error al eliminar publicación:", err.message);
-        alert("❌ No se pudo eliminar la publicación.");
     }
 };
-
-// Función para enviar comentario
-window.enviarComentario = async (pubId) => {
-    const textarea = document.getElementById(`comentario-${pubId}`);
-    const mensaje = textarea.value.trim();
-    if (!mensaje) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
-        if (error) throw error;
-
-        textarea.value = "";
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al enviar comentario:", err.message);
-        alert("❌ No se pudo enviar el comentario.");
-    }
-};
-
-// Función para cargar comentarios
-async function cargarComentarios(pubId) {
-    const container = document.getElementById(`comentarios-${pubId}`);
-    container.innerHTML = "Cargando comentarios...";
-
-    try {
-        const { data, error } = await supabase
-            .from("comentarios")
-            .select(`*, profiles!inner(id, full_name)`)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
-            return;
-        }
-
-        container.innerHTML = data.map(c => {
-            const isCommentOwner = c.user_id === currentUserId;
-            return `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <p class="mb-0">
-                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
-                    </p>
-                    ${isCommentOwner ? `
-                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
-                            🗑️
-                        </button>` : ""}
-                </div>
-            `;
-        }).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar comentarios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
-    }
-}
-
-// Función para eliminar comentario
-window.eliminarComentario = async (comentarioId, pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .delete()
-            .eq("id", comentarioId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-
-        alert("✅ Comentario eliminado");
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al eliminar comentario:", err.message);
-        alert("❌ No se pudo eliminar el comentario.");
-    }
-};
-
-// Función para realizar intercambio
-window.realizarIntercambio = async (pubId) => {
-    try {
-        const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
-
-        const { data: newIntercambio, error } = await supabase
-            .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
-            .select("id, mensaje, estado, profiles(id, full_name)");
-
-        if (error) throw error;
-
-        cargarIntercambios(pubId);
-    } catch (err) {
-        console.error("❌ Error al realizar intercambio:", err.message);
-        alert("❌ No se pudo solicitar el intercambio.");
-    }
-};
-
-// Función para cargar intercambios (visible para dueño y solicitante)
-async function cargarIntercambios(pubId, ownerId) {
-    const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Cargando solicitudes de intercambio...";
-
-    try {
-        const { data, error } = await supabase
-            .from("intercambios")
-            .select(`
-                id,
-                mensaje,
-                estado,
-                user_id,
-                profiles(id, full_name)
-            `)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
-            return;
-        }
-
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => {
-                const isRequester = i.user_id === currentUserId;
-                const isOwner = currentUserId === ownerId;
-
-                let acciones = "";
-                if (isOwner && i.estado === "Pendiente") {
-                    acciones = `
-                        <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                        <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
-                    `;
-                }
-
-                // Mostrar chat si está aceptado y soy dueño o solicitante
-                let chatBox = "";
-                if (i.estado === "Aceptado" && (isOwner || isRequester)) {
-                    chatBox = `
-                        <div class="card mt-2 p-2 border">
-                            <div id="chat-mensajes-${i.id}" class="mb-2" style="max-height:150px; overflow-y:auto;"></div>
-                            <div class="input-group">
-                                <input type="text" id="chat-input-${i.id}" class="form-control" placeholder="Escribe un mensaje">
-                                <button class="btn btn-primary" onclick="enviarMensajeChat(${i.id})">Enviar</button>
-                            </div>
-                        </div>
-                    `;
-                    // cargar mensajes
-                    cargarMensajesChat(i.id);
-                }
-
-                return `
-                    <div class="mb-2 p-2 border rounded">
-                        <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-                        <div>${acciones}</div>
-                        ${chatBox}
-                    </div>
-                `;
-            }).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar intercambios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
-    }
-}
-
-// Función para actualizar estado de intercambio
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .update({ estado: nuevoEstado })
-            .eq("id", intercambioId);
-
-        if (error) throw error;
-
-        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
-        cargarIntercambios(pubId, currentUserId);
-    } catch (err) {
-        console.error("❌ Error al actualizar estado:", err.message);
-        alert("❌ No se pudo actualizar la solicitud.");
-    }
-};
-
-// ============================
-// CHAT FUNCIONES
-// ============================
-
-// Enviar mensaje en el chat
-window.enviarMensajeChat = async (intercambioId) => {
-    const input = document.getElementById(`chat-input-${intercambioId}`);
-    const mensaje = input.value.trim();
-    if (!mensaje) return;
-
-    try {
-        const { error } = await supabase
-            .from("chat_mensajes")
-            .insert([{ intercambio_id: intercambioId, user_id: currentUserId, mensaje }]);
-
-        if (error) throw error;
-
-        input.value = "";
-        cargarMensajesChat(intercambioId);
-    } catch (err) {
-        console.error("❌ Error al enviar mensaje de chat:", err.message);
-    }
-};
-
-// Cargar mensajes del chat
-async function cargarMensajesChat(intercambioId) {
-    const container = document.getElementById(`chat-mensajes-${intercambioId}`);
-    if (!container) return;
-
-    try {
-        const { data, error } = await supabase
-            .from("chat_mensajes")
-            .select(`*, profiles!inner(id, full_name)`)
-            .eq("intercambio_id", intercambioId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        container.innerHTML = data.map(m => `
-            <div><strong>${m.profiles.full_name}:</strong> ${m.mensaje}</div>
-        `).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar mensajes del chat:", err.message);
-    }
-}
