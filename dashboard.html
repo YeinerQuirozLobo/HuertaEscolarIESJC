@@ -77,18 +77,18 @@
 
 <!-- MODAL CHAT FLOTANTE -->
 <div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="chatModalLabel">Chat del Intercambio</h5>
+        <h5 class="modal-title" id="chatModalLabel">Chat del intercambio</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
-        <div id="mensajesModal" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
-        <textarea id="inputMensajeModal" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
+        <div id="mensajesModal" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
+        <textarea id="inputMensajeModal" class="form-control mb-2" placeholder="Escribe un mensaje"></textarea>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-primary" id="enviarMensajeModalBtn">Enviar</button>
+        <button type="button" id="enviarMensajeModalBtn" class="btn btn-primary">Enviar</button>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>

@@ -113,22 +113,9 @@ async function cargarPublicaciones() {
                             <div class="card-body">
                                 <h5 class="card-title text-primary">${pub.producto}</h5>
                                 <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
-                                <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
-                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
-
-                                ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
-
-                                <div class="mb-2">
-                                    <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
-                                    <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
-                                </div>
-
-                                <div class="mb-2">
-                                    <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
-                                </div>
-
-                                <div id="comentarios-${pub.id}"></div>
-                                <div id="intercambios-${pub.id}"></div>
+                                <p class="card-text">Desea a cambio: ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${pub.producto_deseado}</p>
+                                <p class="card-text"><small class="text-muted">Publicado por ${authorName}</small></p>
+                                ${!isOwner ? `<button class="btn btn-outline-success btn-sm" onclick="solicitarIntercambio(${pub.id})">Solicitar intercambio</button>` : ""}
                             </div>
                         </div>
                     </div>
@@ -137,218 +124,36 @@ async function cargarPublicaciones() {
         }).join("");
 
         feedContainer.innerHTML = htmlCards;
-
-        // Cargar comentarios e intercambios por cada publicación
-        data.forEach(pub => {
-            cargarComentarios(pub.id);
-            cargarIntercambios(pub.id, pub.user_id);
-        });
-
     } catch (err) {
         console.error("❌ Error al cargar publicaciones:", err.message);
-        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
+        feedContainer.innerHTML = "<p class='text-center text-danger'>Error al cargar publicaciones</p>";
     }
 }
-
-// Función para eliminar publicación
-window.eliminarPublicacion = async (pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("publicaciones")
-            .delete()
-            .eq("id", pubId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-        alert("✅ Publicación eliminada");
-        await cargarPublicaciones();
-    } catch (err) {
-        console.error("❌ Error al eliminar publicación:", err.message);
-        alert("❌ No se pudo eliminar la publicación.");
-    }
-};
-
-// Función para enviar comentario
-window.enviarComentario = async (pubId) => {
-    const textarea = document.getElementById(`comentario-${pubId}`);
-    const mensaje = textarea.value.trim();
-    if (!mensaje) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
-        if (error) throw error;
-
-        textarea.value = "";
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al enviar comentario:", err.message);
-        alert("❌ No se pudo enviar el comentario.");
-    }
-};
-
-// Función para cargar comentarios
-async function cargarComentarios(pubId) {
-    const container = document.getElementById(`comentarios-${pubId}`);
-    container.innerHTML = "Cargando comentarios...";
-
-    try {
-        const { data, error } = await supabase
-            .from("comentarios")
-            .select(`*, profiles!inner(id, full_name)`)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
-            return;
-        }
-
-        container.innerHTML = data.map(c => {
-            const isCommentOwner = c.user_id === currentUserId;
-            return `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <p class="mb-0">
-                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
-                    </p>
-                    ${isCommentOwner ? `
-                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
-                            🗑️
-                        </button>` : ""}
-                </div>
-            `;
-        }).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar comentarios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
-    }
-}
-
-// Función para eliminar comentario
-window.eliminarComentario = async (comentarioId, pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .delete()
-            .eq("id", comentarioId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-
-        alert("✅ Comentario eliminado");
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al eliminar comentario:", err.message);
-        alert("❌ No se pudo eliminar el comentario.");
-    }
-};
-
-// Función para realizar intercambio
-window.realizarIntercambio = async (pubId) => {
-    try {
-        const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
-
-        const { data: newIntercambio, error } = await supabase
-            .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
-            .select();
-
-        if (error) throw error;
-
-        cargarIntercambios(pubId);
-    } catch (err) {
-        console.error("❌ Error al realizar intercambio:", err.message);
-        alert("❌ No se pudo solicitar el intercambio.");
-    }
-};
-
-// Función para cargar intercambios CORRECTA
-async function cargarIntercambios(pubId, ownerId) {
-    const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Cargando solicitudes de intercambio...";
-
-    try {
-        const { data: intercambios, error } = await supabase
-            .from("intercambios")
-            .select("*")
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-        if (error) throw error;
-
-        if (!intercambios || intercambios.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
-            return;
-        }
-
-        // Traer perfiles de los usuarios que hicieron solicitudes
-        const userIds = intercambios.map(i => i.user_id);
-        const { data: perfiles } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", userIds);
-
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            intercambios.map(i => {
-                const perfil = perfiles.find(p => p.id === i.user_id);
-                const nombreUsuario = perfil ? perfil.full_name : "Desconocido";
-                const esOwner = currentUserId === ownerId;
-                const puedeAbrirChat = i.estado === "Aceptado" && (esOwner || i.user_id === currentUserId);
-
-                return `
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span>${nombreUsuario} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-                        <div>
-                            ${esOwner && i.estado === "Pendiente" ? `
-                                <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                                <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
-                            ` : ""}
-                            ${puedeAbrirChat ? `
-                                <button class="btn btn-sm btn-primary" onclick="abrirChatModal(${i.id}, ${ownerId}, ${i.user_id})">Abrir Chat</button>
-                            ` : ""}
-                        </div>
-                    </div>
-                `;
-            }).join("");
-
-    } catch (err) {
-        console.error("❌ Error al cargar intercambios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
-    }
-}
-
-// Función para actualizar estado de intercambio
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .update({ estado: nuevoEstado })
-            .eq("id", intercambioId);
-
-        if (error) throw error;
-
-        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
-        cargarIntercambios(pubId, currentUserId);
-    } catch (err) {
-        console.error("❌ Error al actualizar estado:", err.message);
-        alert("❌ No se pudo actualizar la solicitud.");
-    }
-};
 
 // ---------------------------
-// CHAT EN MODAL FLOTA
+// CHAT ENTRE USUARIOS EN MODAL
 // ---------------------------
 
-// Abrir chat desde intercambio con modal
-window.abrirChatModal = async (intercambioId, user1Id, user2Id) => {
-    // Verificar si ya existe chat
-    let { data: chatExistente } = await supabase
+let chatActualId = null;
+let intercambioActualId = null;
+let participante1Actual = null;
+let participante2Actual = null;
+
+// Abrir chat solo si intercambio está ACEPTADO
+window.abrirChatPorIntercambio = async (intercambioId) => {
+    const { data: intercambio } = await supabase
+        .from("intercambios")
+        .select("*")
+        .eq("id", intercambioId)
+        .single();
+
+    if (!intercambio || intercambio.estado !== "ACEPTADO") {
+        alert("❌ Este chat solo se puede abrir si el intercambio fue aceptado.");
+        return;
+    }
+
+    // Verificar o crear chat
+    const { data: chatExistente } = await supabase
         .from("chats")
         .select("*")
         .eq("intercambio_id", intercambioId)
@@ -366,82 +171,67 @@ window.abrirChatModal = async (intercambioId, user1Id, user2Id) => {
         chatId = chatExistente.id;
     }
 
-    // Crear modal dinámicamente
-    let modalHtml = `
-    <div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="chatModalLabel">Chat entre usuarios</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-          </div>
-          <div class="modal-body">
-            <div id="mensajes-${chatId}" style="height: 250px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
-            <textarea id="inputMensaje-${chatId}" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" onclick="enviarMensajeModal(${chatId})">Enviar</button>
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    `;
-    document.body.insertAdjacentHTML("beforeend", modalHtml);
-    const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
+    chatActualId = chatId;
+    intercambioActualId = intercambioId;
+
+    // Obtener participantes
+    const { data: publicacion } = await supabase
+        .from("publicaciones")
+        .select("user_id")
+        .eq("id", intercambio.publicacion_id)
+        .single();
+
+    participante1Actual = intercambio.user_id;
+    participante2Actual = publicacion.user_id;
+
+    if (currentUserId !== participante1Actual && currentUserId !== participante2Actual) {
+        alert("❌ No puedes abrir este chat.");
+        return;
+    }
+
+    // Abrir modal
+    const chatModalEl = document.getElementById('chatModal');
+    const chatModal = new bootstrap.Modal(chatModalEl);
     chatModal.show();
 
-    cargarMensajes(chatId);
-
-    // Al cerrar modal se elimina del DOM
-    document.getElementById("chatModal").addEventListener('hidden.bs.modal', function () {
-        document.getElementById("chatModal").remove();
-    });
+    cargarMensajesModal(chatId);
 };
 
-// Cargar mensajes de chat
-async function cargarMensajes(chatId) {
-    const container = document.getElementById(`mensajes-${chatId}`);
-    container.innerHTML = "Cargando mensajes...";
+// Cargar mensajes en modal
+async function cargarMensajesModal(chatId) {
+    const contenedor = document.getElementById("mensajesModal");
+    contenedor.innerHTML = "";
 
-    try {
-        const { data, error } = await supabase
-            .from("mensajes")
-            .select("*, profiles!inner(id, full_name)")
-            .eq("chat_id", chatId)
-            .order("id", { ascending: true });
-        if (error) throw error;
+    const { data: mensajes } = await supabase
+        .from("mensajes")
+        .select(`*, profiles!remitente(id, full_name)`)
+        .eq("chat_id", chatId)
+        .order("created_at", { ascending: true });
 
-        container.innerHTML = data.map(m => {
-            const esYo = m.user_id === currentUserId;
-            return `<div class="${esYo ? 'text-end' : 'text-start'} mb-1">
-                        <strong>${m.profiles.full_name}:</strong> ${m.mensaje}
-                    </div>`;
+    if (mensajes && mensajes.length > 0) {
+        contenedor.innerHTML = mensajes.map(m => {
+            return `<p><strong>${m.remitente.full_name}:</strong> ${m.contenido}</p>`;
         }).join("");
-
-        container.scrollTop = container.scrollHeight;
-    } catch (err) {
-        console.error("❌ Error al cargar mensajes:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar mensajes.</p>";
     }
+
+    contenedor.scrollTop = contenedor.scrollHeight;
 }
 
 // Enviar mensaje desde modal
-window.enviarMensajeModal = async (chatId) => {
-    const input = document.getElementById(`inputMensaje-${chatId}`);
-    const mensaje = input.value.trim();
-    if (!mensaje) return;
+document.getElementById("enviarMensajeModalBtn").addEventListener("click", async () => {
+    const input = document.getElementById("inputMensajeModal");
+    const contenido = input.value.trim();
+    if (!contenido) return;
 
-    try {
-        const { error } = await supabase
-            .from("mensajes")
-            .insert([{ chat_id: chatId, user_id: currentUserId, mensaje }]);
-        if (error) throw error;
-
-        input.value = "";
-        cargarMensajes(chatId);
-    } catch (err) {
-        console.error("❌ Error al enviar mensaje:", err.message);
-        alert("❌ No se pudo enviar el mensaje.");
+    if (currentUserId !== participante1Actual && currentUserId !== participante2Actual) {
+        alert("❌ No puedes enviar mensajes en este chat.");
+        return;
     }
-};
+
+    await supabase
+        .from("mensajes")
+        .insert([{ chat_id: chatActualId, remitente: currentUserId, contenido }]);
+
+    input.value = "";
+    cargarMensajesModal(chatActualId);
+});
