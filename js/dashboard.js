@@ -269,7 +269,7 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios (ahora con botones para el dueño)
+// Función para cargar intercambios
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
@@ -277,13 +277,7 @@ async function cargarIntercambios(pubId, ownerId) {
     try {
         const { data, error } = await supabase
             .from("intercambios")
-            .select(`
-                id,
-                mensaje,
-                estado,
-                user_id,
-                profiles(id, full_name)
-            `)
+            .select(`id, mensaje, estado, user_id, profiles(id, full_name)`)
             .eq("publicacion_id", pubId)
             .order("id", { ascending: true });
 
@@ -295,58 +289,105 @@ async function cargarIntercambios(pubId, ownerId) {
         }
 
         container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-                    ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
+            data.map(i => {
+                const esOwner = currentUserId === ownerId;
+                const puedeAbrirChat = i.estado === "Aceptado" && (esOwner || i.user_id === currentUserId);
+
+                return `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
                         <div>
-                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
-                            <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+                            ${esOwner && i.estado === "Pendiente" ? `
+                                <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
+                                <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
+                            ` : ""}
+                            ${puedeAbrirChat ? `
+                                <button class="btn btn-sm btn-primary" onclick="abrirChatPorIntercambio(${i.id})">Abrir Chat</button>
+                            ` : ""}
                         </div>
-                    ` : ""}
-                </div>
-            `).join("");
+                    </div>
+                `;
+            }).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
     }
 }
 
-// ------------------- CHAT PRIVADO -------------------
+// Función para actualizar estado de intercambio
+window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
+    try {
+        const { error } = await supabase
+            .from("intercambios")
+            .update({ estado: nuevoEstado })
+            .eq("id", intercambioId);
 
-// Función para abrir chat privado
-window.abrirChat = async (chatId, intercambioId) => {
-    const chatContainer = document.getElementById("chatContainer");
-    if (!chatContainer) {
-        alert("No se encontró el contenedor de chat en el HTML.");
-        return;
+        if (error) throw error;
+
+        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
+        cargarIntercambios(pubId, currentUserId);
+    } catch (err) {
+        console.error("❌ Error al actualizar estado:", err.message);
+        alert("❌ No se pudo actualizar la solicitud.");
+    }
+};
+
+// ---------------------------
+// CHAT ENTRE USUARIOS
+// ---------------------------
+
+// Abrir chat desde el intercambio
+window.abrirChatPorIntercambio = async (intercambioId) => {
+    // Verificar si ya existe chat
+    let { data: chatExistente } = await supabase
+        .from("chats")
+        .select("*")
+        .eq("intercambio_id", intercambioId)
+        .single();
+
+    let chatId;
+    if (!chatExistente) {
+        const { data: newChat } = await supabase
+            .from("chats")
+            .insert({ intercambio_id: intercambioId })
+            .select()
+            .single();
+        chatId = newChat.id;
+    } else {
+        chatId = chatExistente.id;
     }
 
-    // Obtener intercambio y verificar permisos
+    abrirChat(chatId, intercambioId);
+};
+
+// Función para mostrar chat
+const abrirChat = async (chatId, intercambioId) => {
+    const chatContainer = document.getElementById("chatContainer");
+    chatContainer.innerHTML = "";
+
     const { data: intercambio } = await supabase
         .from("intercambios")
         .select("user_id, publicacion_id")
         .eq("id", intercambioId)
         .single();
 
-    // Obtener dueño de la publicación
     const { data: publicacion } = await supabase
         .from("publicaciones")
         .select("user_id")
         .eq("id", intercambio.publicacion_id)
         .single();
 
-    const participante1 = intercambio.user_id; // quien hizo la solicitud
-    const participante2 = publicacion.user_id; // dueño de la publicación
+    const participante1 = intercambio.user_id;
+    const participante2 = publicacion.user_id;
 
     if (currentUserId !== participante1 && currentUserId !== participante2) {
-        alert("❌ No tienes permiso para ver este chat.");
+        alert("❌ No puedes abrir este chat.");
         return;
     }
 
     chatContainer.innerHTML = `
-        <h5>Chat privado</h5>
-        <div id="mensajes-${chatId}" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
+        <h5 class="mb-2">Chat del intercambio</h5>
+        <div id="mensajes-${chatId}" style="height: 250px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; margin-bottom: 5px;"></div>
         <textarea id="inputMensaje-${chatId}" class="form-control mb-1" placeholder="Escribe un mensaje"></textarea>
         <button class="btn btn-primary btn-sm" onclick="enviarMensaje(${chatId}, ${participante1}, ${participante2})">Enviar</button>
     `;
@@ -354,13 +395,13 @@ window.abrirChat = async (chatId, intercambioId) => {
     cargarMensajes(chatId);
 };
 
-// Función para cargar mensajes de un chat
+// Función para cargar mensajes
 async function cargarMensajes(chatId) {
     const contenedor = document.getElementById(`mensajes-${chatId}`);
     if (!contenedor) return;
 
     const { data: mensajes } = await supabase
-        .from("mensajes")   // <-- tabla corregida
+        .from("mensajes")
         .select(`*, profiles!remitente(id, full_name)`)
         .eq("chat_id", chatId)
         .order("created_at", { ascending: true });
@@ -384,52 +425,9 @@ window.enviarMensaje = async (chatId, participante1, participante2) => {
     }
 
     await supabase
-        .from("mensajes")  // <-- tabla corregida
+        .from("mensajes")
         .insert([{ chat_id: chatId, remitente: currentUserId, contenido }]);
 
     input.value = "";
     cargarMensajes(chatId);
-};
-
-// Modificar actualizarEstadoSolicitud para crear chat al aceptar
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .update({ estado: nuevoEstado })
-            .eq("id", intercambioId);
-
-        if (error) throw error;
-
-        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
-        cargarIntercambios(pubId, currentUserId);
-
-        // Si fue aceptado, crear chat si no existe y abrirlo
-        if (nuevoEstado === "Aceptado") {
-            const { data: chatExistente } = await supabase
-                .from("chats")
-                .select("*")
-                .eq("intercambio_id", intercambioId)
-                .single();
-
-            let chatId;
-            if (!chatExistente) {
-                const { data: newChat } = await supabase
-                    .from("chats")
-                    .insert({ intercambio_id: intercambioId })
-                    .select()
-                    .single();
-                chatId = newChat.id;
-            } else {
-                chatId = chatExistente.id;
-            }
-
-            // Abrir chat
-            abrirChat(chatId, intercambioId);
-        }
-
-    } catch (err) {
-        console.error("❌ Error al actualizar estado:", err.message);
-        alert("❌ No se pudo actualizar la solicitud.");
-    }
 };
