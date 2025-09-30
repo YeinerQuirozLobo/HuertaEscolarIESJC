@@ -408,19 +408,19 @@ window.enviarMensajeModal = async (chatId) => {
     cargarMensajes(chatId);
 };
 
-// Función para cargar mensajes
+// Función para cargar mensajes (corregida para mostrar remitente y receptor)
 async function cargarMensajes(chatId) {
     const contenedor = document.getElementById(`mensajes-${chatId}`);
     if (!contenedor) return;
 
     const { data: mensajes } = await supabase
-        .from("mensajes")
-        .select(`*, profiles!remitente(id, full_name)`)
-        .eq("chat_id", chatId)
-        .order("created_at", { ascending: true });
+        .from('chat_con_nombres')  // <--- usar la vista que contiene remitente y receptor
+        .select('*')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: true });
 
     contenedor.innerHTML = mensajes.map(m => {
-        return `<p><strong>${m.remitente.full_name}:</strong> ${m.contenido}</p>`;
+        return `<p><strong>${m.remitente_nombre} ➜ ${m.receptor_nombre}:</strong> ${m.contenido}</p>`;
     }).join("");
 
     contenedor.scrollTop = contenedor.scrollHeight;
