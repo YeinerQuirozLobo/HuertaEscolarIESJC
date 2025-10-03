@@ -295,20 +295,26 @@ async function cargarIntercambios(pubId, ownerId) {
         }
 
         container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-                    ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
-                        <div>
+            data.map(i => {
+                const aceptarBtn = (currentUserId === ownerId && i.estado === "Pendiente")
+                    ? `<div>
                             <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId}, ${ownerId}, '${i.user_id}')">Aceptar</button>
                             <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
-                        </div>
-                    ` : ""}
-                    ${(i.estado === "Aceptado" && (currentUserId === i.user_id || currentUserId === ownerId)) ? `
-                        <button class="btn btn-primary btn-sm" onclick="abrirChat(${i.id})">Abrir Chat</button>
-                    ` : ""}
-                </div>
-            `).join("");
+                       </div>`
+                    : "";
+
+                const chatBtn = (i.estado === "Aceptado" && (currentUserId === i.user_id || currentUserId === ownerId))
+                    ? `<button class="btn btn-primary btn-sm" onclick="abrirChat(${i.id})">Abrir Chat</button>`
+                    : "";
+
+                return `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
+                        ${aceptarBtn}
+                        ${chatBtn}
+                    </div>
+                `;
+            }).join("");
     } catch (err) {
         console.error("❌ Error al cargar intercambios:", err.message);
         container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
