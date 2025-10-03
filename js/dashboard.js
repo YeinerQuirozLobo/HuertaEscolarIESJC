@@ -1,36 +1,27 @@
 import { supabase } from "./supabaseClient.js";
 
-// 🔹 Referencias a elementos del DOM
+// Referencias a elementos del DOM
 const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
+// Obtener sesión y usuario actual
 let currentUserId = null;
 
-// 🔹 Inicialización al cargar la página
 document.addEventListener("DOMContentLoaded", async () => {
-    try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-
-        console.log("Sesión activa:", session);
-
-        if (!session) {
-            window.location.href = "index.html";
-            return;
-        }
-
-        currentUserId = session.user.id;
-        console.log("Usuario autenticado ID:", currentUserId);
-
-        await cargarPublicaciones();
-    } catch (err) {
-        console.error("❌ Error al obtener la sesión:", err.message);
+    const { data: { session }, error } = await supabase.auth.getSession();
+    console.log("Sesión activa:", session);
+    if (!session) {
         window.location.href = "index.html";
+        return;
     }
+    currentUserId = session.user.id;
+    console.log("Usuario autenticado ID:", currentUserId);
+
+    await cargarPublicaciones();
 });
 
-// 🔹 Logout
+// Logout
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
         await supabase.auth.signOut();
@@ -38,52 +29,45 @@ if (logoutBtn) {
     });
 }
 
-// 🔹 Manejar formulario de publicación
+// Manejar formulario de publicación
 if (formPublicacion) {
     formPublicacion.addEventListener("submit", async (e) => {
         e.preventDefault();
-
-        const producto = document.getElementById("producto").value.trim();
-        const cantidad = document.getElementById("cantidad").value.trim();
-        const unidad = document.getElementById("unidad").value.trim();
-        const productoDeseado = document.getElementById("productoDeseado").value.trim();
-        const cantidadDeseada = document.getElementById("cantidadDeseada").value.trim();
-        const unidadDeseada = document.getElementById("unidadDeseada").value.trim();
+        const producto = document.getElementById("producto").value;
+        const cantidad = document.getElementById("cantidad").value;
+        const unidad = document.getElementById("unidad").value;
+        const productoDeseado = document.getElementById("productoDeseado").value;
+        const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+        const unidadDeseada = document.getElementById("unidadDeseada").value;
         const imagenFile = document.getElementById("imagen").files[0];
 
         try {
             let imagen_url = null;
-
-            // 🔹 Subir imagen si existe
             if (imagenFile) {
                 const fileName = `${Date.now()}-${currentUserId}-${imagenFile.name}`;
-                const { data: imgData, error: imgError } = await supabase
-                    .storage
+                const { data: imgData, error: imgError } = await supabase.storage
                     .from("productos")
                     .upload(fileName, imagenFile);
-
                 if (imgError) throw imgError;
 
-                const { data: urlData } = supabase
-                    .storage
+                const { data: urlData } = supabase.storage
                     .from("productos")
                     .getPublicUrl(imgData.path);
-
                 imagen_url = urlData.publicUrl;
             }
 
-            // 🔹 Insertar publicación
-            const { error } = await supabase.from("publicaciones").insert([{
-                user_id: currentUserId,
-                producto,
-                cantidad,
-                unidad,
-                imagen_url,
-                producto_deseado: productoDeseado,
-                cantidad_deseada: cantidadDeseada,
-                unidad_deseada: unidadDeseada
-            }]);
-
+            const { error } = await supabase
+                .from("publicaciones")
+                .insert([{
+                    user_id: currentUserId,
+                    producto,
+                    cantidad,
+                    unidad,
+                    imagen_url,
+                    producto_deseado: productoDeseado,
+                    cantidad_deseada: cantidadDeseada,
+                    unidad_deseada: unidadDeseada
+                }]);
             if (error) throw error;
 
             alert("✅ Publicación realizada con éxito");
@@ -96,11 +80,7 @@ if (formPublicacion) {
     });
 }
 
-// ============================================================
-// 🔹 Funciones principales
-// ============================================================
-
-// Cargar publicaciones
+// Función para cargar publicaciones
 async function cargarPublicaciones() {
     feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
 
@@ -117,7 +97,8 @@ async function cargarPublicaciones() {
             return;
         }
 
-        feedContainer.innerHTML = data.map(pub => {
+        const htmlCards = data.map(pub => {
+            const authorName = pub.profiles.full_name;
             const isOwner = pub.user_id === currentUserId;
 
             return `
@@ -133,7 +114,7 @@ async function cargarPublicaciones() {
                                 <h5 class="card-title text-primary">${pub.producto}</h5>
                                 <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
                                 <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
-                                <p class="card-text"><small class="text-muted">Publicado por: ${pub.profiles.full_name}</small></p>
+                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
 
                                 ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
 
@@ -155,7 +136,9 @@ async function cargarPublicaciones() {
             `;
         }).join("");
 
-        // 🔹 Cargar comentarios e intercambios de cada publicación
+        feedContainer.innerHTML = htmlCards;
+
+        // Cargar comentarios e intercambios por cada publicación
         data.forEach(pub => {
             cargarComentarios(pub.id);
             cargarIntercambios(pub.id, pub.user_id);
@@ -167,11 +150,7 @@ async function cargarPublicaciones() {
     }
 }
 
-// ============================================================
-// 🔹 Funciones CRUD
-// ============================================================
-
-// Eliminar publicación
+// Función para eliminar publicación
 window.eliminarPublicacion = async (pubId) => {
     if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
 
@@ -183,7 +162,6 @@ window.eliminarPublicacion = async (pubId) => {
             .eq("user_id", currentUserId);
 
         if (error) throw error;
-
         alert("✅ Publicación eliminada");
         await cargarPublicaciones();
     } catch (err) {
@@ -192,19 +170,16 @@ window.eliminarPublicacion = async (pubId) => {
     }
 };
 
-// Enviar comentario
+// Función para enviar comentario
 window.enviarComentario = async (pubId) => {
     const textarea = document.getElementById(`comentario-${pubId}`);
     const mensaje = textarea.value.trim();
     if (!mensaje) return;
 
     try {
-        const { error } = await supabase.from("comentarios").insert([{
-            publicacion_id: pubId,
-            user_id: currentUserId,
-            mensaje
-        }]);
-
+        const { error } = await supabase
+            .from("comentarios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
         if (error) throw error;
 
         textarea.value = "";
@@ -215,7 +190,7 @@ window.enviarComentario = async (pubId) => {
     }
 };
 
-// Cargar comentarios
+// Función para cargar comentarios
 async function cargarComentarios(pubId) {
     const container = document.getElementById(`comentarios-${pubId}`);
     container.innerHTML = "Cargando comentarios...";
@@ -238,8 +213,13 @@ async function cargarComentarios(pubId) {
             const isCommentOwner = c.user_id === currentUserId;
             return `
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <p class="mb-0"><strong>${c.profiles.full_name}:</strong> ${c.mensaje}</p>
-                    ${isCommentOwner ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">🗑️</button>` : ""}
+                    <p class="mb-0">
+                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
+                    </p>
+                    ${isCommentOwner ? `
+                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
+                            🗑️
+                        </button>` : ""}
                 </div>
             `;
         }).join("");
@@ -249,7 +229,7 @@ async function cargarComentarios(pubId) {
     }
 }
 
-// Eliminar comentario
+// Función para eliminar comentario
 window.eliminarComentario = async (comentarioId, pubId) => {
     if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
 
@@ -270,17 +250,15 @@ window.eliminarComentario = async (comentarioId, pubId) => {
     }
 };
 
-// Realizar intercambio
+// Función para realizar intercambio
 window.realizarIntercambio = async (pubId) => {
     try {
         const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
 
-        const { error } = await supabase.from("intercambios").insert([{
-            publicacion_id: pubId,
-            user_id: currentUserId,
-            mensaje,
-            estado: "Pendiente"
-        }]);
+        const { data: newIntercambio, error } = await supabase
+            .from("intercambios")
+            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
+            .select("id, mensaje, estado, profiles(id, full_name)");
 
         if (error) throw error;
 
@@ -291,7 +269,7 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Cargar intercambios
+// Función para cargar intercambios (ahora con botones para el dueño)
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
@@ -299,7 +277,13 @@ async function cargarIntercambios(pubId, ownerId) {
     try {
         const { data, error } = await supabase
             .from("intercambios")
-            .select(`id, mensaje, estado, user_id, profiles(id, full_name)`)
+            .select(`
+                id,
+                mensaje,
+                estado,
+                user_id,
+                profiles(id, full_name)
+            `)
             .eq("publicacion_id", pubId)
             .order("id", { ascending: true });
 
@@ -316,9 +300,12 @@ async function cargarIntercambios(pubId, ownerId) {
                     <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
                     ${(currentUserId === ownerId && i.estado === "Pendiente") ? `
                         <div>
-                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId})">Aceptar</button>
+                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId}, ${ownerId}, '${i.user_id}')">Aceptar</button>
                             <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
                         </div>
+                    ` : ""}
+                    ${(i.estado === "Aceptado" && (currentUserId === i.user_id || currentUserId === ownerId)) ? `
+                        <button class="btn btn-primary btn-sm" onclick="abrirChat(${i.id})">Abrir Chat</button>
                     ` : ""}
                 </div>
             `).join("");
@@ -328,8 +315,8 @@ async function cargarIntercambios(pubId, ownerId) {
     }
 }
 
-// Actualizar estado de intercambio
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => {
+// Función para actualizar estado de intercambio
+window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId, ownerId = null, solicitanteId = null) => {
     try {
         const { error } = await supabase
             .from("intercambios")
@@ -338,6 +325,16 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
 
         if (error) throw error;
 
+        // Si es aceptado -> crear chat
+        if (nuevoEstado === "Aceptado") {
+            await supabase.from("chats").insert([{
+                intercambio_id: intercambioId,
+                usuario1: ownerId,
+                usuario2: solicitanteId,
+                expira_en: new Date(Date.now() + 48 * 60 * 60 * 1000) // expira en 48h
+            }]);
+        }
+
         alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
         cargarIntercambios(pubId, currentUserId);
     } catch (err) {
@@ -345,3 +342,96 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
         alert("❌ No se pudo actualizar la solicitud.");
     }
 };
+
+// ------------------- CHAT MODAL -------------------
+
+// Crear modal dinámico
+const modalContainer = document.createElement("div");
+modalContainer.innerHTML = `
+<div class="modal fade" id="chatModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content shadow-lg">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Chat de Intercambio</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="chatMessages" style="max-height:400px; overflow-y:auto;"></div>
+      <div class="modal-footer">
+        <input type="text" id="chatInput" class="form-control" placeholder="Escribe un mensaje...">
+        <button class="btn btn-success" id="sendChatBtn">Enviar</button>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+document.body.appendChild(modalContainer);
+
+let currentChatId = null;
+
+window.abrirChat = async (intercambioId) => {
+    // Buscar si ya existe chat para ese intercambio
+    const { data: chat, error } = await supabase
+        .from("chats")
+        .select("id")
+        .eq("intercambio_id", intercambioId)
+        .maybeSingle();
+
+    if (error || !chat) {
+        alert("❌ No se encontró chat para este intercambio.");
+        return;
+    }
+
+    currentChatId = chat.id;
+    cargarMensajes();
+
+    const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
+    chatModal.show();
+
+    document.getElementById("sendChatBtn").onclick = enviarMensaje;
+};
+
+async function cargarMensajes() {
+    const container = document.getElementById("chatMessages");
+    container.innerHTML = "Cargando mensajes...";
+
+    const { data, error } = await supabase
+        .from("mensajes")
+        .select(`*, profiles!inner(id, full_name)`)
+        .eq("chat_id", currentChatId)
+        .order("created_at", { ascending: true });
+
+    if (error) {
+        container.innerHTML = "<p class='text-danger'>Error al cargar mensajes.</p>";
+        return;
+    }
+
+    if (!data || data.length === 0) {
+        container.innerHTML = "<p class='text-muted'>No hay mensajes aún.</p>";
+        return;
+    }
+
+    container.innerHTML = data.map(m => `
+        <div class="mb-2 ${m.remitente === currentUserId ? "text-end" : "text-start"}">
+            <span class="badge ${m.remitente === currentUserId ? "bg-success" : "bg-secondary"}">
+                ${m.profiles.full_name}
+            </span>
+            <p class="d-inline-block px-2">${m.contenido}</p>
+        </div>
+    `).join("");
+    container.scrollTop = container.scrollHeight;
+}
+
+async function enviarMensaje() {
+    const input = document.getElementById("chatInput");
+    const contenido = input.value.trim();
+    if (!contenido) return;
+
+    await supabase.from("mensajes").insert([{
+        chat_id: currentChatId,
+        remitente: currentUserId,
+        contenido
+    }]);
+
+    input.value = "";
+    cargarMensajes();
+}
