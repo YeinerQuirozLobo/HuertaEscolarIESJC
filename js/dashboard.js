@@ -140,15 +140,9 @@ async function cargarPublicaciones() {
                                 ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
 
                                 <div class="mb-2">
-                                    <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
-                                    <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
-                                </div>
-
-                                <div class="mb-2">
                                     <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
                                 </div>
 
-                                <div id="comentarios-${pub.id}"></div>
                                 <div id="intercambios-${pub.id}"></div>
                             </div>
                         </div>
@@ -161,7 +155,6 @@ async function cargarPublicaciones() {
 
         // Cargar comentarios e intercambios por cada publicación
         data.forEach(pub => {
-            cargarComentarios(pub.id);
             cargarIntercambios(pub.id, pub.user_id);
         });
 
@@ -191,85 +184,7 @@ window.eliminarPublicacion = async (pubId) => {
     }
 };
 
-// Función para enviar comentario
-window.enviarComentario = async (pubId) => {
-    const textarea = document.getElementById(`comentario-${pubId}`);
-    const mensaje = textarea.value.trim();
-    if (!mensaje) return;
 
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
-        if (error) throw error;
-
-        textarea.value = "";
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al enviar comentario:", err.message);
-        alert("❌ No se pudo enviar el comentario.");
-    }
-};
-
-// Función para cargar comentarios
-async function cargarComentarios(pubId) {
-    const container = document.getElementById(`comentarios-${pubId}`);
-    container.innerHTML = "Cargando comentarios...";
-
-    try {
-        const { data, error } = await supabase
-            .from("comentarios")
-            .select(`*, profiles!inner(id, full_name)`)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
-            return;
-        }
-
-        container.innerHTML = data.map(c => {
-            const isCommentOwner = c.user_id === currentUserId;
-            return `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <p class="mb-0">
-                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
-                    </p>
-                    ${isCommentOwner ? `
-                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
-                            🗑️
-                        </button>` : ""}
-                </div>
-            `;
-        }).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar comentarios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
-    }
-}
-
-// Función para eliminar comentario
-window.eliminarComentario = async (comentarioId, pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .delete()
-            .eq("id", comentarioId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-
-        alert("✅ Comentario eliminado");
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al eliminar comentario:", err.message);
-        alert("❌ No se pudo eliminar el comentario.");
-    }
-};
 
 // Función para realizar intercambio
 window.realizarIntercambio = async (pubId) => {
