@@ -1,443 +1,176 @@
 import { supabase } from "./supabaseClient.js";
 
-// Referencias a elementos del DOM
+// Elementos del DOM
 const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Obtener sesión y usuario actual
+// Chat modal
+const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
+const mensajesModal = document.getElementById("mensajesModal");
+const inputMensajeModal = document.getElementById("inputMensajeModal");
+const enviarMensajeModalBtn = document.getElementById("enviarMensajeModalBtn");
+
+// Usuario actual
 let currentUserId = null;
-
-document.addEventListener("DOMContentLoaded", async () => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    console.log("Sesión activa:", session);
-    if (!session) {
-        window.location.href = "index.html";
-        return;
-    }
-    currentUserId = session.user.id;
-    console.log("Usuario autenticado ID:", currentUserId);
-
-    await cargarPublicaciones();
-});
-
-// Logout
-if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-        await supabase.auth.signOut();
-        window.location.href = "index.html";
-    });
-}
-
-// Manejar formulario de publicación
-if (formPublicacion) {
-    formPublicacion.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const producto = document.getElementById("producto").value;
-        const cantidad = document.getElementById("cantidad").value;
-        const unidad = document.getElementById("unidad").value;
-        const productoDeseado = document.getElementById("productoDeseado").value;
-        const cantidadDeseada = document.getElementById("cantidadDeseada").value;
-        const unidadDeseada = document.getElementById("unidadDeseada").value;
-        const imagenFile = document.getElementById("imagen").files[0];
-
-        try {
-            let imagen_url = null;
-            if (imagenFile) {
-                const fileName = `${Date.now()}-${currentUserId}-${imagenFile.name}`;
-                const { data: imgData, error: imgError } = await supabase.storage
-                    .from("productos")
-                    .upload(fileName, imagenFile);
-                if (imgError) throw imgError;
-
-                const { data: urlData } = supabase.storage
-                    .from("productos")
-                    .getPublicUrl(imgData.path);
-                imagen_url = urlData.publicUrl;
-            }
-
-            const { error } = await supabase
-                .from("publicaciones")
-                .insert([{
-                    user_id: currentUserId,
-                    producto,
-                    cantidad,
-                    unidad,
-                    imagen_url,
-                    producto_deseado: productoDeseado,
-                    cantidad_deseada: cantidadDeseada,
-                    unidad_deseada: unidadDeseada
-                }]);
-            if (error) throw error;
-
-            alert("✅ Publicación realizada con éxito");
-            formPublicacion.reset();
-            await cargarPublicaciones();
-        } catch (err) {
-            console.error("❌ Error al publicar:", err.message);
-            alert("❌ No se pudo publicar el producto.");
-        }
-    });
-}
-
-// Función para cargar publicaciones
-async function cargarPublicaciones() {
-    feedContainer.innerHTML = "<p class='text-center'>Cargando publicaciones...</p>";
-
-    try {
-        const { data, error } = await supabase
-            .from("publicaciones")
-            .select(`*, profiles!inner(id, full_name)`)
-            .order("id", { ascending: false });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            feedContainer.innerHTML = "<p class='text-center'>No hay publicaciones aún.</p>";
-            return;
-        }
-
-        const htmlCards = data.map(pub => {
-            const authorName = pub.profiles.full_name;
-            const isOwner = pub.user_id === currentUserId;
-
-            return `
-                <div class="card mb-3 shadow">
-                    <div class="row g-0">
-                        <div class="col-md-4">
-                            <img src="${pub.imagen_url || "https://via.placeholder.com/150"}" 
-                                 class="img-fluid rounded-start h-100 object-fit-cover" 
-                                 alt="Imagen de ${pub.producto}">
-                        </div>
-                        <div class="col-md-8">
-                            <div class="card-body">
-                                <h5 class="card-title text-primary">${pub.producto}</h5>
-                                <p class="card-text text-secondary">Cantidad: ${pub.cantidad} ${pub.unidad}</p>
-                                <p class="card-text">Deseo a cambio: <strong>${pub.cantidad_deseada} ${pub.unidad_deseada}</strong> de <strong>${pub.producto_deseado}</strong></p>
-                                <p class="card-text"><small class="text-muted">Publicado por: ${authorName}</small></p>
-
-                                ${isOwner ? `<button class="btn btn-danger btn-sm mb-2" onclick="eliminarPublicacion(${pub.id})">Eliminar</button>` : ''}
-
-                                <div class="mb-2">
-                                    <textarea id="comentario-${pub.id}" class="form-control mb-1" placeholder="Escribe un comentario"></textarea>
-                                    <button class="btn btn-primary btn-sm" onclick="enviarComentario(${pub.id})">Comentar</button>
-                                </div>
-
-                                <div class="mb-2">
-                                    <button class="btn btn-success btn-sm" onclick="realizarIntercambio(${pub.id})">Solicitar Intercambio</button>
-                                </div>
-
-                                <div id="comentarios-${pub.id}"></div>
-                                <div id="intercambios-${pub.id}"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join("");
-
-        feedContainer.innerHTML = htmlCards;
-
-        // Cargar comentarios e intercambios por cada publicación
-        data.forEach(pub => {
-            cargarComentarios(pub.id);
-            cargarIntercambios(pub.id, pub.user_id);
-        });
-
-    } catch (err) {
-        console.error("❌ Error al cargar publicaciones:", err.message);
-        feedContainer.innerHTML = "<p class='text-danger text-center'>Error al cargar publicaciones.</p>";
-    }
-}
-
-// Función para eliminar publicación
-window.eliminarPublicacion = async (pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("publicaciones")
-            .delete()
-            .eq("id", pubId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-        alert("✅ Publicación eliminada");
-        await cargarPublicaciones();
-    } catch (err) {
-        console.error("❌ Error al eliminar publicación:", err.message);
-        alert("❌ No se pudo eliminar la publicación.");
-    }
-};
-
-// Función para enviar comentario
-window.enviarComentario = async (pubId) => {
-    const textarea = document.getElementById(`comentario-${pubId}`);
-    const mensaje = textarea.value.trim();
-    if (!mensaje) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje }]);
-        if (error) throw error;
-
-        textarea.value = "";
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al enviar comentario:", err.message);
-        alert("❌ No se pudo enviar el comentario.");
-    }
-};
-
-// Función para cargar comentarios
-async function cargarComentarios(pubId) {
-    const container = document.getElementById(`comentarios-${pubId}`);
-    container.innerHTML = "Cargando comentarios...";
-
-    try {
-        const { data, error } = await supabase
-            .from("comentarios")
-            .select(`*, profiles!inner(id, full_name)`)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay comentarios aún.</p>";
-            return;
-        }
-
-        container.innerHTML = data.map(c => {
-            const isCommentOwner = c.user_id === currentUserId;
-            return `
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <p class="mb-0">
-                        <strong>${c.profiles.full_name}:</strong> ${c.mensaje}
-                    </p>
-                    ${isCommentOwner ? `
-                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="eliminarComentario(${c.id}, ${pubId})">
-                            🗑️
-                        </button>` : ""}
-                </div>
-            `;
-        }).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar comentarios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar comentarios.</p>";
-    }
-}
-
-// Función para eliminar comentario
-window.eliminarComentario = async (comentarioId, pubId) => {
-    if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
-
-    try {
-        const { error } = await supabase
-            .from("comentarios")
-            .delete()
-            .eq("id", comentarioId)
-            .eq("user_id", currentUserId);
-
-        if (error) throw error;
-
-        alert("✅ Comentario eliminado");
-        cargarComentarios(pubId);
-    } catch (err) {
-        console.error("❌ Error al eliminar comentario:", err.message);
-        alert("❌ No se pudo eliminar el comentario.");
-    }
-};
-
-// Función para realizar intercambio
-window.realizarIntercambio = async (pubId) => {
-    try {
-        const mensaje = prompt("Escribe un mensaje para tu solicitud de intercambio (opcional):") || "";
-
-        const { data: newIntercambio, error } = await supabase
-            .from("intercambios")
-            .insert([{ publicacion_id: pubId, user_id: currentUserId, mensaje, estado: "Pendiente" }])
-            .select("id, mensaje, estado, profiles(id, full_name)");
-
-        if (error) throw error;
-
-        cargarIntercambios(pubId);
-    } catch (err) {
-        console.error("❌ Error al realizar intercambio:", err.message);
-        alert("❌ No se pudo solicitar el intercambio.");
-    }
-};
-
-// Función para cargar intercambios (ahora con botones para el dueño)
-async function cargarIntercambios(pubId, ownerId) {
-    const container = document.getElementById(`intercambios-${pubId}`);
-    container.innerHTML = "Cargando solicitudes de intercambio...";
-
-    try {
-        const { data, error } = await supabase
-            .from("intercambios")
-            .select(`
-                id,
-                mensaje,
-                estado,
-                user_id,
-                profiles(id, full_name)
-            `)
-            .eq("publicacion_id", pubId)
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p class='text-muted'>No hay solicitudes de intercambio.</p>";
-            return;
-        }
-
-        container.innerHTML = "<p><strong>Solicitudes de intercambio:</strong></p>" +
-            data.map(i => {
-                const aceptarBtn = (currentUserId === ownerId && i.estado === "Pendiente")
-                    ? `<div>
-                            <button class="btn btn-sm btn-success" onclick="actualizarEstadoSolicitud(${i.id}, 'Aceptado', ${pubId}, ${ownerId}, '${i.user_id}')">Aceptar</button>
-                            <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
-                       </div>`
-                    : "";
-
-                const chatBtn = (i.estado === "Aceptado" && (currentUserId === i.user_id || currentUserId === ownerId))
-                    ? `<button class="btn btn-primary btn-sm" onclick="abrirChat(${i.id})">Abrir Chat</button>`
-                    : "";
-
-                return `
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span>${i.profiles.full_name} - ${i.estado} ${i.mensaje ? `: "${i.mensaje}"` : ""}</span>
-                        ${aceptarBtn}
-                        ${chatBtn}
-                    </div>
-                `;
-            }).join("");
-    } catch (err) {
-        console.error("❌ Error al cargar intercambios:", err.message);
-        container.innerHTML = "<p class='text-danger'>Error al cargar intercambios.</p>";
-    }
-}
-
-// Función para actualizar estado de intercambio
-window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId, ownerId = null, solicitanteId = null) => {
-    try {
-        const { error } = await supabase
-            .from("intercambios")
-            .update({ estado: nuevoEstado })
-            .eq("id", intercambioId);
-
-        if (error) throw error;
-
-        // Si es aceptado -> crear chat
-        if (nuevoEstado === "Aceptado") {
-            await supabase.from("chats").insert([{
-                intercambio_id: intercambioId,
-                usuario1: ownerId,
-                usuario2: solicitanteId,
-                expira_en: new Date(Date.now() + 48 * 60 * 60 * 1000) // expira en 48h
-            }]);
-        }
-
-        alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
-        cargarIntercambios(pubId, currentUserId);
-    } catch (err) {
-        console.error("❌ Error al actualizar estado:", err.message);
-        alert("❌ No se pudo actualizar la solicitud.");
-    }
-};
-
-// ------------------- CHAT MODAL -------------------
-
-// Crear modal dinámico
-const modalContainer = document.createElement("div");
-modalContainer.innerHTML = `
-<div class="modal fade" id="chatModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable modal-lg">
-    <div class="modal-content shadow-lg">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">Chat de Intercambio</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="chatMessages" style="max-height:400px; overflow-y:auto;"></div>
-      <div class="modal-footer">
-        <input type="text" id="chatInput" class="form-control" placeholder="Escribe un mensaje...">
-        <button class="btn btn-success" id="sendChatBtn">Enviar</button>
-      </div>
-    </div>
-  </div>
-</div>
-`;
-document.body.appendChild(modalContainer);
-
 let currentChatId = null;
 
-window.abrirChat = async (intercambioId) => {
-    // Buscar si ya existe chat para ese intercambio
-    const { data: chat, error } = await supabase
-        .from("chats")
-        .select("id")
-        .eq("intercambio_id", intercambioId)
-        .maybeSingle();
+// --- SESIÓN ---
+document.addEventListener("DOMContentLoaded", async () => {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error("Error al obtener sesión:", error);
+    return;
+  }
+  console.log("Sesión activa:", session);
+  if (session) {
+    currentUserId = session.user.id;
+    console.log("Usuario autenticado ID:", currentUserId);
+    cargarPublicaciones();
+  }
+});
 
-    if (error || !chat) {
-        alert("❌ No se encontró chat para este intercambio.");
-        return;
+// --- LOGOUT ---
+logoutBtn.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  window.location.href = "index.html";
+});
+
+// --- PUBLICAR PRODUCTO ---
+formPublicacion.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const producto = document.getElementById("producto").value;
+  const cantidad = document.getElementById("cantidad").value;
+  const unidad = document.getElementById("unidad").value;
+  const productoDeseado = document.getElementById("productoDeseado").value;
+  const cantidadDeseada = document.getElementById("cantidadDeseada").value;
+  const unidadDeseada = document.getElementById("unidadDeseada").value;
+
+  const { error } = await supabase.from("publicaciones").insert([
+    {
+      producto,
+      cantidad,
+      unidad,
+      producto_deseado: productoDeseado,
+      cantidad_deseada: cantidadDeseada,
+      unidad_deseada: unidadDeseada,
+      user_id: currentUserId
     }
+  ]);
 
-    currentChatId = chat.id;
-    cargarMensajes();
+  if (error) console.error("Error al publicar:", error);
+  else {
+    formPublicacion.reset();
+    cargarPublicaciones();
+  }
+});
 
-    const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
-    chatModal.show();
+// --- CARGAR PUBLICACIONES ---
+async function cargarPublicaciones() {
+  feedContainer.innerHTML = "";
+  const { data, error } = await supabase.from("publicaciones").select(`
+    id, producto, cantidad, unidad, producto_deseado, cantidad_deseada, unidad_deseada,
+    user_id, profiles ( full_name )
+  `);
 
-    document.getElementById("sendChatBtn").onclick = enviarMensaje;
+  if (error) {
+    console.error("Error al cargar publicaciones:", error);
+    return;
+  }
+
+  data.forEach(pub => {
+    const card = document.createElement("div");
+    card.classList.add("card", "shadow", "p-3", "mb-3");
+
+    const nombre = pub.profiles?.full_name || "Anónimo";
+
+    card.innerHTML = `
+      <h5>${pub.producto} (${pub.cantidad} ${pub.unidad})</h5>
+      <p><strong>Desea:</strong> ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${pub.producto_deseado}</p>
+      <p><em>Publicado por: ${nombre}</em></p>
+      <button class="btn btn-sm btn-primary me-2" onclick="aceptarIntercambio(${pub.id})">Aceptar</button>
+      <button class="btn btn-sm btn-danger">Rechazar</button>
+    `;
+
+    feedContainer.appendChild(card);
+  });
+}
+
+// --- ACEPTAR INTERCAMBIO ---
+window.aceptarIntercambio = async (publicacionId) => {
+  // Crear intercambio
+  const { data: intercambio, error } = await supabase.from("intercambios").insert([
+    {
+      user_id: currentUserId,
+      publicacion_id: publicacionId,
+      estado: "aceptado"
+    }
+  ]).select().single();
+
+  if (error) {
+    console.error("Error creando intercambio:", error);
+    return;
+  }
+
+  // Crear chat asociado
+  const { data: chat, error: chatError } = await supabase.from("chats").insert([
+    { intercambio_id: intercambio.id }
+  ]).select().single();
+
+  if (chatError) {
+    console.error("Error creando chat:", chatError);
+    return;
+  }
+
+  // Abrir modal de chat
+  abrirChat(chat.id);
 };
 
-async function cargarMensajes() {
-    const container = document.getElementById("chatMessages");
-    container.innerHTML = "Cargando mensajes...";
+// --- ABRIR CHAT ---
+async function abrirChat(chatId) {
+  currentChatId = chatId;
+  mensajesModal.innerHTML = "";
 
-    const { data, error } = await supabase
-        .from("mensajes")
-        .select(`*, profiles!inner(id, full_name)`)
-        .eq("chat_id", currentChatId)
-        .order("created_at", { ascending: true });
+  const { data: mensajes, error } = await supabase
+    .from("mensajes")
+    .select("*")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: true });
 
-    if (error) {
-        container.innerHTML = "<p class='text-danger'>Error al cargar mensajes.</p>";
-        return;
-    }
+  if (error) {
+    console.error("Error cargando mensajes:", error);
+    return;
+  }
 
-    if (!data || data.length === 0) {
-        container.innerHTML = "<p class='text-muted'>No hay mensajes aún.</p>";
-        return;
-    }
+  mensajes.forEach(msg => {
+    const p = document.createElement("p");
+    p.textContent = `${msg.remitente}: ${msg.contenido}`;
+    mensajesModal.appendChild(p);
+  });
 
-    container.innerHTML = data.map(m => `
-        <div class="mb-2 ${m.remitente === currentUserId ? "text-end" : "text-start"}">
-            <span class="badge ${m.remitente === currentUserId ? "bg-success" : "bg-secondary"}">
-                ${m.profiles.full_name}
-            </span>
-            <p class="d-inline-block px-2">${m.contenido}</p>
-        </div>
-    `).join("");
-    container.scrollTop = container.scrollHeight;
+  chatModal.show();
 }
 
-async function enviarMensaje() {
-    const input = document.getElementById("chatInput");
-    const contenido = input.value.trim();
-    if (!contenido) return;
+// --- ENVIAR MENSAJE ---
+enviarMensajeModalBtn.addEventListener("click", async () => {
+  if (!currentChatId) return;
 
-    await supabase.from("mensajes").insert([{
-        chat_id: currentChatId,
-        remitente: currentUserId,
-        contenido
-    }]);
+  const contenido = inputMensajeModal.value.trim();
+  if (contenido === "") return;
 
-    input.value = "";
-    cargarMensajes();
-}
+  const { error } = await supabase.from("mensajes").insert([
+    {
+      chat_id: currentChatId,
+      remitente: currentUserId,
+      contenido
+    }
+  ]);
+
+  if (error) {
+    console.error("Error enviando mensaje:", error);
+    return;
+  }
+
+  inputMensajeModal.value = "";
+  abrirChat(currentChatId);
+});
