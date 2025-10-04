@@ -1,42 +1,43 @@
 import { supabase } from "./supabaseClient.js";
 
-// Elementos del DOM
+// Referencias
 const formPublicacion = document.getElementById("formPublicacion");
 const feedContainer = document.getElementById("feed");
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Chat modal
+// Modal chat
 const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
 const mensajesModal = document.getElementById("mensajesModal");
 const inputMensajeModal = document.getElementById("inputMensajeModal");
 const enviarMensajeModalBtn = document.getElementById("enviarMensajeModalBtn");
 
-// Usuario actual
 let currentUserId = null;
-let currentChatId = null;
+let chatIntercambioId = null;
 
-// --- SESIÓN ---
+// Sesión actual
 document.addEventListener("DOMContentLoaded", async () => {
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error) {
-    console.error("Error al obtener sesión:", error);
+    console.error("Error obteniendo sesión:", error.message);
+    return;
+  }
+  if (!session) {
+    console.warn("⚠️ No hay sesión activa.");
     return;
   }
   console.log("Sesión activa:", session);
-  if (session) {
-    currentUserId = session.user.id;
-    console.log("Usuario autenticado ID:", currentUserId);
-    cargarPublicaciones();
-  }
+  currentUserId = session.user.id;
+  console.log("Usuario autenticado ID:", currentUserId);
+  cargarPublicaciones();
 });
 
-// --- LOGOUT ---
+// Cerrar sesión
 logoutBtn.addEventListener("click", async () => {
   await supabase.auth.signOut();
   window.location.href = "index.html";
 });
 
-// --- PUBLICAR PRODUCTO ---
+// Crear publicación
 formPublicacion.addEventListener("submit", async (e) => {
   e.preventDefault();
   const producto = document.getElementById("producto").value;
@@ -46,131 +47,109 @@ formPublicacion.addEventListener("submit", async (e) => {
   const cantidadDeseada = document.getElementById("cantidadDeseada").value;
   const unidadDeseada = document.getElementById("unidadDeseada").value;
 
-  const { error } = await supabase.from("publicaciones").insert([
-    {
-      producto,
-      cantidad,
-      unidad,
-      producto_deseado: productoDeseado,
-      cantidad_deseada: cantidadDeseada,
-      unidad_deseada: unidadDeseada,
-      user_id: currentUserId
-    }
-  ]);
+  const imagenFile = document.getElementById("imagen").files[0];
+  let imagenUrl = null;
 
-  if (error) console.error("Error al publicar:", error);
-  else {
+  if (imagenFile) {
+    const filePath = `${Date.now()}_${imagenFile.name}`;
+    const { error: uploadError } = await supabase.storage.from("productos").upload(filePath, imagenFile);
+    if (uploadError) {
+      console.error("Error subiendo imagen:", uploadError.message);
+      return;
+    }
+    const { data: publicUrl } = supabase.storage.from("productos").getPublicUrl(filePath);
+    imagenUrl = publicUrl.publicUrl;
+  }
+
+  const { error } = await supabase.from("publicaciones").insert([{
+    usuario_id: currentUserId,
+    producto,
+    cantidad,
+    unidad,
+    imagen_url: imagenUrl,
+    producto_deseado: productoDeseado,
+    cantidad_deseada: cantidadDeseada,
+    unidad_deseada: unidadDeseada
+  }]);
+
+  if (error) {
+    console.error("Error creando publicación:", error.message);
+  } else {
     formPublicacion.reset();
     cargarPublicaciones();
   }
 });
 
-// --- CARGAR PUBLICACIONES ---
+// Cargar publicaciones
 async function cargarPublicaciones() {
-  feedContainer.innerHTML = "";
-  const { data, error } = await supabase.from("publicaciones").select(`
-    id, producto, cantidad, unidad, producto_deseado, cantidad_deseada, unidad_deseada,
-    user_id, profiles ( full_name )
-  `);
-
+  const { data, error } = await supabase.from("publicaciones").select(`*, usuario:usuario_id (email)`).order("id", { ascending: false });
   if (error) {
-    console.error("Error al cargar publicaciones:", error);
+    console.error("Error cargando publicaciones:", error.message);
     return;
   }
 
+  feedContainer.innerHTML = "";
   data.forEach(pub => {
     const card = document.createElement("div");
-    card.classList.add("card", "shadow", "p-3", "mb-3");
-
-    const nombre = pub.profiles?.full_name || "Anónimo";
-
+    card.className = "card shadow mb-3";
     card.innerHTML = `
-      <h5>${pub.producto} (${pub.cantidad} ${pub.unidad})</h5>
-      <p><strong>Desea:</strong> ${pub.cantidad_deseada} ${pub.unidad_deseada} de ${pub.producto_deseado}</p>
-      <p><em>Publicado por: ${nombre}</em></p>
-      <button class="btn btn-sm btn-primary me-2" onclick="aceptarIntercambio(${pub.id})">Aceptar</button>
-      <button class="btn btn-sm btn-danger">Rechazar</button>
+      <div class="card-body">
+        <h5>${pub.producto} (${pub.cantidad} ${pub.unidad})</h5>
+        <p><b>Desea a cambio:</b> ${pub.producto_deseado} (${pub.cantidad_deseada} ${pub.unidad_deseada})</p>
+        ${pub.imagen_url ? `<img src="${pub.imagen_url}" class="img-fluid rounded mb-2" style="max-height:200px;">` : ""}
+        <p><small>Publicado por: ${pub.usuario?.email || "Anónimo"}</small></p>
+        <button class="btn btn-primary btn-sm">Pedir Intercambio</button>
+      </div>
     `;
-
     feedContainer.appendChild(card);
   });
 }
 
-// --- ACEPTAR INTERCAMBIO ---
-window.aceptarIntercambio = async (publicacionId) => {
-  // Crear intercambio
-  const { data: intercambio, error } = await supabase.from("intercambios").insert([
-    {
-      user_id: currentUserId,
-      publicacion_id: publicacionId,
-      estado: "aceptado"
-    }
-  ]).select().single();
-
-  if (error) {
-    console.error("Error creando intercambio:", error);
-    return;
-  }
-
-  // Crear chat asociado
-  const { data: chat, error: chatError } = await supabase.from("chats").insert([
-    { intercambio_id: intercambio.id }
-  ]).select().single();
-
-  if (chatError) {
-    console.error("Error creando chat:", chatError);
-    return;
-  }
-
-  // Abrir modal de chat
-  abrirChat(chat.id);
-};
-
-// --- ABRIR CHAT ---
-async function abrirChat(chatId) {
-  currentChatId = chatId;
+// -----------------------------
+// CHAT DEL INTERCAMBIO
+// -----------------------------
+async function abrirChat(intercambioId) {
+  chatIntercambioId = intercambioId;
   mensajesModal.innerHTML = "";
+  inputMensajeModal.value = "";
 
-  const { data: mensajes, error } = await supabase
-    .from("mensajes")
-    .select("*")
-    .eq("chat_id", chatId)
+  // Cargar mensajes existentes
+  const { data: mensajes, error } = await supabase.from("mensajes")
+    .select(`*, usuario:usuario_id (email)`)
+    .eq("intercambio_id", intercambioId)
     .order("created_at", { ascending: true });
 
-  if (error) {
-    console.error("Error cargando mensajes:", error);
-    return;
+  if (!error && mensajes) {
+    mensajes.forEach(m => {
+      const p = document.createElement("p");
+      p.innerHTML = `<b>${m.usuario?.email || "Usuario"}:</b> ${m.contenido}`;
+      mensajesModal.appendChild(p);
+    });
+    mensajesModal.scrollTop = mensajesModal.scrollHeight;
   }
-
-  mensajes.forEach(msg => {
-    const p = document.createElement("p");
-    p.textContent = `${msg.remitente}: ${msg.contenido}`;
-    mensajesModal.appendChild(p);
-  });
 
   chatModal.show();
 }
 
-// --- ENVIAR MENSAJE ---
+// Enviar mensaje
 enviarMensajeModalBtn.addEventListener("click", async () => {
-  if (!currentChatId) return;
-
+  if (!chatIntercambioId) return;
   const contenido = inputMensajeModal.value.trim();
-  if (contenido === "") return;
+  if (!contenido) return;
 
-  const { error } = await supabase.from("mensajes").insert([
-    {
-      chat_id: currentChatId,
-      remitente: currentUserId,
-      contenido
-    }
-  ]);
+  const { error } = await supabase.from("mensajes").insert([{
+    intercambio_id: chatIntercambioId,
+    usuario_id: currentUserId,
+    contenido
+  }]);
 
-  if (error) {
-    console.error("Error enviando mensaje:", error);
-    return;
+  if (!error) {
+    const p = document.createElement("p");
+    p.innerHTML = `<b>Tú:</b> ${contenido}`;
+    mensajesModal.appendChild(p);
+    inputMensajeModal.value = "";
+    mensajesModal.scrollTop = mensajesModal.scrollHeight;
+  } else {
+    console.error("Error enviando mensaje:", error.message);
   }
-
-  inputMensajeModal.value = "";
-  abrirChat(currentChatId);
 });
