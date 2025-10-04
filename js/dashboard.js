@@ -7,6 +7,7 @@ const logoutBtn = document.getElementById("logoutBtn");
 
 // Obtener sesión y usuario actual
 let currentUserId = null;
+let currentChatId = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -269,7 +270,7 @@ window.realizarIntercambio = async (pubId) => {
     }
 };
 
-// Función para cargar intercambios (ahora con botones para el dueño)
+// Función para cargar intercambios (ahora con chat)
 async function cargarIntercambios(pubId, ownerId) {
     const container = document.getElementById(`intercambios-${pubId}`);
     container.innerHTML = "Cargando solicitudes de intercambio...";
@@ -304,6 +305,9 @@ async function cargarIntercambios(pubId, ownerId) {
                             <button class="btn btn-sm btn-danger" onclick="actualizarEstadoSolicitud(${i.id}, 'Rechazado', ${pubId})">Rechazar</button>
                         </div>
                     ` : ""}
+                    ${(i.estado === "Aceptado") ? `
+                        <button class="btn btn-sm btn-primary" onclick="abrirChat(${i.id})">Abrir Chat</button>
+                    ` : ""}
                 </div>
             `).join("");
     } catch (err) {
@@ -322,6 +326,19 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
 
         if (error) throw error;
 
+        // Si es aceptado, crear chat automáticamente
+        if (nuevoEstado === "Aceptado") {
+            const { data: chatExistente } = await supabase
+                .from("chats")
+                .select("id")
+                .eq("intercambio_id", intercambioId)
+                .maybeSingle();
+
+            if (!chatExistente) {
+                await supabase.from("chats").insert([{ intercambio_id: intercambioId }]);
+            }
+        }
+
         alert(`✅ Solicitud ${nuevoEstado.toLowerCase()}`);
         cargarIntercambios(pubId, currentUserId);
     } catch (err) {
@@ -329,3 +346,75 @@ window.actualizarEstadoSolicitud = async (intercambioId, nuevoEstado, pubId) => 
         alert("❌ No se pudo actualizar la solicitud.");
     }
 };
+
+// ----------------------
+// 📌 CHAT FUNCTIONS
+// ----------------------
+window.abrirChat = async (intercambioId) => {
+    // Verificar si ya existe un chat
+    let { data: chat } = await supabase
+        .from("chats")
+        .select("id")
+        .eq("intercambio_id", intercambioId)
+        .maybeSingle();
+
+    if (!chat) {
+        const { data: nuevoChat } = await supabase
+            .from("chats")
+            .insert([{ intercambio_id: intercambioId }])
+            .select()
+            .single();
+        chat = nuevoChat;
+    }
+
+    currentChatId = chat.id;
+
+    // Mostrar modal
+    const chatModal = new bootstrap.Modal(document.getElementById("chatModal"));
+    chatModal.show();
+
+    cargarMensajes();
+
+    // Escuchar nuevos mensajes
+    supabase
+        .channel("mensajes:" + currentChatId)
+        .on("postgres_changes",
+            { event: "INSERT", schema: "public", table: "mensajes", filter: `chat_id=eq.${currentChatId}` },
+            payload => renderMensaje(payload.new)
+        ).subscribe();
+};
+
+async function cargarMensajes() {
+    const { data: mensajes } = await supabase
+        .from("mensajes")
+        .select("*")
+        .eq("chat_id", currentChatId)
+        .order("created_at", { ascending: true });
+
+    const chatMessages = document.getElementById("chatMessages");
+    chatMessages.innerHTML = "";
+    mensajes.forEach(m => renderMensaje(m));
+}
+
+function renderMensaje(mensaje) {
+    const chatMessages = document.getElementById("chatMessages");
+    const li = document.createElement("li");
+    li.className = "list-group-item";
+    li.textContent = `${mensaje.remitente === currentUserId ? "Tú" : "Otro"}: ${mensaje.contenido}`;
+    chatMessages.appendChild(li);
+}
+
+document.getElementById("chatForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("chatInput");
+    const contenido = input.value.trim();
+    if (!contenido) return;
+
+    await supabase.from("mensajes").insert([{
+        chat_id: currentChatId,
+        remitente: currentUserId,
+        contenido
+    }]);
+
+    input.value = "";
+});
